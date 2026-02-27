@@ -14,6 +14,12 @@ var cookie = {
 };
 function Check_Https_Redirect_Status(){
 	var result = false;
+	const host = (location.hostname || "").toLowerCase();
+	const lan_ipaddr = ('<% nvram_get("lan_ipaddr"); %>' || "").toLowerCase();
+	const isPrivateIPv4 = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
+	const isLoopback = (host === "localhost" || host === "127.0.0.1" || host === "::1");
+	const isLanHostname = (host === "router.asus.com" || host.endsWith(".local") || host === lan_ipaddr);
+	const isLocalAccess = (isPrivateIPv4 || isLoopback || isLanHostname);
 
 	const isTargetRegionSku = (function(){
 		const ttc = '<% nvram_get("territory_code"); %>' || '';
@@ -22,7 +28,7 @@ function Check_Https_Redirect_Status(){
 	})();
 
 	var http_enable = '<% nvram_get("http_enable"); %>';
-	if(isTargetRegionSku && isSupport("secure_default") && (http_enable == "2") &&
+	if(!isLocalAccess && isTargetRegionSku && isSupport("secure_default") && (http_enable == "2") &&
 		(location.protocol != 'https:') &&
 		((cookie.get("not_show_https_redirect") != "1") && (cookie.get("from_https_redirect") != "1")) ){
 		 result = true;
