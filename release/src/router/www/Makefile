@@ -909,10 +909,6 @@ ifneq ($(RTCONFIG_UUPLUGIN), y)
 endif
 
 ifneq ($(RTCONFIG_ROG_UI),y)
-ifneq ($(RTCONFIG_TUF_UI),y)
-	rm -rf $(INSTALLDIR)/www/fonts/xolonium.regular.otf
-	rm -rf $(INSTALLDIR)/www/fonts/xolonium.regular.woff
-endif
 	rm -rf $(INSTALLDIR)/www/images/triLvGameAcceleration
 	rm -rf $(INSTALLDIR)/www/css/triLvGameAcceleration.css
 	rm -rf $(INSTALLDIR)/www/ajax_wanlink.asp
