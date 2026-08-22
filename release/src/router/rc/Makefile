@@ -412,6 +412,7 @@ endif
 
 OBJS := rc.o init.o interface.o lan.o wireless.o $(if $(RTCONFIG_SOFTWIRE46), s46comm.o) wan.o pppd.o auth.o services.o
 OBJS += firewall.o ppp.o services.o common.o conn_diag_log.o
+OBJS += compat_missing.o
 OBJS += watchdog.o check_watchdog.o fwupg_flashing.o ntp.o udhcpc.o ate.o
 ifeq ($(RTCONFIG_MULTIWAN_IF),y)
 OBJS += qos_multi_wan_if.o
@@ -1281,8 +1282,9 @@ endif
 endif
 
 ifeq ($(RTCONFIG_BRCM_HOSTAPD),y)
+WPS_PBCD_LDFLAGS := $(filter-out -L$(TOP)/libwebapi -lwebapi,$(LDFLAGS))
 $(WPS_PBCD): $(OBJS_WPS_PBCD)
-	@$(CC) -o $@ $(OBJS_WPS_PBCD) $(LDFLAGS)
+	@$(CC) -o $@ $(OBJS_WPS_PBCD) $(WPS_PBCD_LDFLAGS)
 endif
 
 rc: $(OBJS) $(if $(RTCONFIG_CONNDIAG),libconn_diag.so,)
