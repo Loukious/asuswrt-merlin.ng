@@ -154,7 +154,7 @@ var faq_index_tmp = get_faq_index(FAQ_List, current_page, 1);
 if(country_array == undefined)
 	country_array = [];
 
-var country_selection_list = [["AA", "<#country_AA#>"], ["CN", "<#country_CN#>"], ["SG", "<#country_SG#>"], ["EU", "<#country_EU#>"], ["KR", "<#country_KR#>"], ["RU", "<#country_RU#>"], ["US", "<#country_US#>"], ["AU", "<#country_AU#>"], ["XX", "<#country_AU#>"]];
+var country_selection_list = [["AA", "<#country_AA#>"], ["CN", "<#country_CN#>"], ["SG", "<#country_SG#>"], ["EU", "<#country_EU#>"], ["KR", "<#country_KR#>"], ["RU", "<#country_RU#>"], ["US", "<#country_US#>"], ["AU", "<#country_AU#>"], ["XX", "<#country_AU#>"], ["#a", "#a"]];
 
 var U5_country_code = false;
 if(
@@ -231,6 +231,17 @@ for(i=0;i<country_selection_list.length;i++){
 		name: country_selection_list[i][1]
 	}
 }
+
+if(country_array.length == 0){
+	for(i=0; i<country_selection_list.length; i++){
+		country_array.push(country_selection_list[i][0]);
+	}
+}
+
+if(country_array.indexOf("#a") == -1){
+	country_array.push("#a");
+}
+
 var cfg_ui_region_disable = 0;
 if(location_list_support && amesh_support && ameshRouter_support) {
 	cfg_ui_region_disable = parseInt('<% nvram_get("cfg_ui_region_disable"); %>');
@@ -724,7 +735,7 @@ function initial(){
 		inputCtrl(document.form.wl_btc_mode, 0);
 	
 	/*ui_location_code Setting*/		
-	if(location_list_support && !cfg_ui_region_disable){
+	if(true){
 		generate_country_selection();
 		document.getElementById('region_tr').style.display = "";
 	}
@@ -999,7 +1010,7 @@ function applyRule(){
 				document.form.acs_dfs.value = "0";
 		}
 		
-		if(location_list_support && !cfg_ui_region_disable){
+		if(true){
 			if((orig_region.length > 0 && orig_region != document.form.ui_location_code.value)
 			|| (orig_region == "" && document.form.ui_location_code.value != tcode)){
 				if(amesh_support && (isSwMode("rt") || isSwMode("ap")) && ameshRouter_support) {
@@ -1088,7 +1099,7 @@ function applyRule(){
 			}
 		}
 
-		if(location_list_support && !cfg_ui_region_disable){
+		if(true){
 			var uiLocationCode = document.form.ui_location_code.value;
 			var locationCode = (U5_country_code && uiLocationCode == "U5") ? "AA" : uiLocationCode;
 			httpApi.nvramSet({
@@ -1469,6 +1480,16 @@ function check_nodes_support_wireless_scheduler() {
 		};
 		var confirm_text = "<#AiMesh_Modellist_Not_Support_Feature01#> <#AiMesh_Modellist_Not_Support_Feature02#> <#AiMesh_Modellist_Not_Support_Feature03#>\n<#Setting_factorydefault_hint2#>";
 		var get_cfg_clientlist = httpApi.hookGet("get_cfg_clientlist", true);
+		if(!Array.isArray(get_cfg_clientlist)) {
+			if(get_cfg_clientlist != null && typeof get_cfg_clientlist == "object") {
+				get_cfg_clientlist = Object.keys(get_cfg_clientlist).map(function(key){
+					return get_cfg_clientlist[key];
+				});
+			}
+			else{
+				get_cfg_clientlist = [];
+			}
+		}
 		var not_support_list = "";
 		get_cfg_clientlist.forEach(function(item, index, array){
 			var isReNode = (index == 0) ? false : true;
@@ -1637,39 +1658,6 @@ function wl_disable11b(obj){
 
 <iframe name="hidden_frame" id="hidden_frame" src="" width="0" height="0" frameborder="0"></iframe>
 <form method="post" name="form" id="ruleForm" action="/start_apply.htm" target="hidden_frame">
-<input type="hidden" name="productid" value="<% nvram_get("productid"); %>">
-<input type="hidden" name="wl_gmode_protection_x" value="<% nvram_get("wl_gmode_protection_x"); %>">
-<input type="hidden" name="wl0_11ax" value="<% nvram_get("wl0_11ax"); %>">
-<input type="hidden" name="current_page" value="Advanced_WAdvanced_Content.asp">
-<input type="hidden" name="next_page" value="Advanced_WAdvanced_Content.asp">
-<input type="hidden" name="group_id" value="">
-<input type="hidden" name="modified" value="0">
-<input type="hidden" name="first_time" value="">
-<input type="hidden" name="action_mode" value="apply_new">
-<input type="hidden" name="action_script" value="restart_wireless">
-<input type="hidden" name="action_wait" value="3">
-<input type="hidden" name="preferred_lang" id="preferred_lang" value="<% nvram_get("preferred_lang"); %>">
-<input type="hidden" name="firmver" value="<% nvram_get("firmver"); %>">
-<input type="hidden" name="wl_subunit" value="-1">
-<input type="hidden" name="wl_amsdu" value="<% nvram_get("wl_amsdu"); %>">
-<input type="hidden" name="wl0_country_code" value="<% nvram_get("wl0_country_code"); %>" disabled>
-<input type="hidden" name="wl_HW_switch" value="<% nvram_get("wl_HW_switch"); %>" disabled>
-<input type="hidden" name="wl_TxPower" value="<% nvram_get("wl_TxPower"); %>" >
-<input type="hidden" name="wl1_80211h_orig" value="<% nvram_get("wl1_80211h"); %>" >
-<input type="hidden" name="acs_dfs" value="<% nvram_get("acs_dfs"); %>">
-<input type="hidden" name="w_Setting" value="1">
-<input type="hidden" name="wl_txpower" value="<% nvram_get("wl_txpower"); %>">
-<input type="hidden" name="wl1_mumimo" value="<% nvram_get("wl1_mumimo"); %>" disabled>
-<input type="hidden" name="smart_connect_x" value="<% nvram_get("smart_connect_x"); %>">
-<input type="hidden" name="wl_optimizexbox" value='<% nvram_get("wl_optimizexbox"); %>'>
-<input type="hidden" name="wl_gmode_protection" value="<% nvram_get("wl_gmode_protection"); %>">
-<input type="hidden" name="wl_rateset" value="<% nvram_get("wl_rateset"); %>">
-<input type="hidden" name="wl_crypto" value="<% nvram_get("wl_crypto"); %>">
-<input type="hidden" name="wl_auth_mode_x" value="<% nvram_get("wl_auth_mode_x"); %>">
-<input type="hidden" name="wl_mfp" value="<% nvram_get("wl_mfp"); %>">
-<input type="hidden" name="wl_radius_ipaddr" value="<% nvram_get("wl_radius_ipaddr"); %>">
-<input type="hidden" name="wl_radius_key" value="<% nvram_get("wl_radius_key"); %>">
-<input type="hidden" name="wl_radius_port" value="<% nvram_get("wl_radius_port"); %>">
 <table class="content" align="center" cellpadding="0" cellspacing="0">
 	<tr>
 		<td width="17">&nbsp;</td>
@@ -2111,7 +2099,7 @@ function wl_disable11b(obj){
 						</td>
 					</tr>					
 					<!-- RT-AC82U & RT-AC58U & 4G-AC53U & MAP-AC1300 & MAP-AC2200 & VZW-AC1300 & RT-AC95U -->
-					<tr id="ext_nss_field" style="display:none">
+					<tr id="ext_nss_field">
 						<th><a class="hintstyle">Extended NSS</a></th>
 						<td>
 							<select name="wl_ext_nss" class="input_option">
@@ -2142,7 +2130,7 @@ function wl_disable11b(obj){
 					</tr>
 
 					<!--QCA9984 platform only, e.g. BRT-AC828 -->
-					<tr id="agiledfs_tr" style="display:none">
+					<tr id="agiledfs_tr">
 						<th>Agile DFS</th>
 						<td>
 							<select name="wl_precacen" class="input_option">
@@ -2164,6 +2152,158 @@ function wl_disable11b(obj){
 					<tr id="region_tr" style="display:none" class="rept ew">
 						<th><a class="hintstyle"><#WLANConfig11b_x_Region#></a></th>
 						<td><div id="region_div"></div></td>
+					</tr>
+					<tr id="raw_country_code_wl0_tr" class="rept ew">
+						<th>wl0_country_code</th>
+						<td><input type="text" maxlength="4" class="input_6_table" name="wl0_country_code" value="<% nvram_get("wl0_country_code"); %>"></td>
+					</tr>
+					<tr id="raw_country_code_wl1_tr" class="rept ew">
+						<th>wl1_country_code</th>
+						<td><input type="text" maxlength="4" class="input_6_table" name="wl1_country_code" value="<% nvram_get("wl1_country_code"); %>"></td>
+					</tr>
+					<tr id="raw_country_code_wl2_tr" class="rept ew">
+						<th>wl2_country_code</th>
+						<td><input type="text" maxlength="4" class="input_6_table" name="wl2_country_code" value="<% nvram_get("wl2_country_code"); %>"></td>
+					</tr>
+					<tr id="raw_country_code_all_tr" class="rept ew">
+						<th>wl_country_code</th>
+						<td><input type="text" maxlength="4" class="input_6_table" name="wl_country_code" value="<% nvram_get("wl_country_code"); %>"></td>
+					</tr>
+					<tr id="raw_regulation_domain_tr" class="rept ew">
+						<th>regulation_domain</th>
+						<td><input type="text" maxlength="4" class="input_6_table" name="regulation_domain" value="<% nvram_get("regulation_domain"); %>"></td>
+					</tr>
+					<tr id="raw_regulation_domain_5g_tr" class="rept ew">
+						<th>regulation_domain_5G</th>
+						<td><input type="text" maxlength="4" class="input_6_table" name="regulation_domain_5G" value="<% nvram_get("regulation_domain_5G"); %>"></td>
+					</tr>
+					<tr id="raw_input_productid_tr" class="rept ew">
+						<th>productid</th>
+						<td><input type="text" class="input_32_table" name="productid" value="<% nvram_get("productid"); %>"></td>
+					</tr>
+					<tr id="raw_input_wl_gmode_protection_x_tr" class="rept ew">
+						<th>wl_gmode_protection_x</th>
+						<td><input type="text" class="input_32_table" name="wl_gmode_protection_x" value="<% nvram_get("wl_gmode_protection_x"); %>"></td>
+					</tr>
+					<tr id="raw_input_wl0_11ax_tr" class="rept ew">
+						<th>wl0_11ax</th>
+						<td><input type="text" class="input_32_table" name="wl0_11ax" value="<% nvram_get("wl0_11ax"); %>"></td>
+					</tr>
+					<tr id="raw_input_current_page_tr" class="rept ew">
+						<th>current_page</th>
+						<td><input type="text" class="input_32_table" name="current_page" value="Advanced_WAdvanced_Content.asp"></td>
+					</tr>
+					<tr id="raw_input_next_page_tr" class="rept ew">
+						<th>next_page</th>
+						<td><input type="text" class="input_32_table" name="next_page" value="Advanced_WAdvanced_Content.asp"></td>
+					</tr>
+					<tr id="raw_input_group_id_tr" class="rept ew">
+						<th>group_id</th>
+						<td><input type="text" class="input_32_table" name="group_id" value=""></td>
+					</tr>
+					<tr id="raw_input_modified_tr" class="rept ew">
+						<th>modified</th>
+						<td><input type="text" class="input_32_table" name="modified" value="0"></td>
+					</tr>
+					<tr id="raw_input_first_time_tr" class="rept ew">
+						<th>first_time</th>
+						<td><input type="text" class="input_32_table" name="first_time" value=""></td>
+					</tr>
+					<tr id="raw_input_action_mode_tr" class="rept ew">
+						<th>action_mode</th>
+						<td><input type="text" class="input_32_table" name="action_mode" value="apply_new"></td>
+					</tr>
+					<tr id="raw_input_action_script_tr" class="rept ew">
+						<th>action_script</th>
+						<td><input type="text" class="input_32_table" name="action_script" value="restart_wireless"></td>
+					</tr>
+					<tr id="raw_input_action_wait_tr" class="rept ew">
+						<th>action_wait</th>
+						<td><input type="text" class="input_32_table" name="action_wait" value="3"></td>
+					</tr>
+					<tr id="raw_input_preferred_lang_tr" class="rept ew">
+						<th>preferred_lang</th>
+						<td><input type="text" class="input_32_table" name="preferred_lang" id="preferred_lang" value="<% nvram_get("preferred_lang"); %>"></td>
+					</tr>
+					<tr id="raw_input_firmver_tr" class="rept ew">
+						<th>firmver</th>
+						<td><input type="text" class="input_32_table" name="firmver" value="<% nvram_get("firmver"); %>"></td>
+					</tr>
+					<tr id="raw_input_wl_subunit_tr" class="rept ew">
+						<th>wl_subunit</th>
+						<td><input type="text" class="input_32_table" name="wl_subunit" value="-1"></td>
+					</tr>
+					<tr id="raw_input_wl_amsdu_tr" class="rept ew">
+						<th>wl_amsdu</th>
+						<td><input type="text" class="input_32_table" name="wl_amsdu" value="<% nvram_get("wl_amsdu"); %>"></td>
+					</tr>
+					<tr id="raw_input_wl_hw_switch_tr" class="rept ew">
+						<th>wl_HW_switch</th>
+						<td><input type="text" class="input_32_table" name="wl_HW_switch" value="<% nvram_get("wl_HW_switch"); %>" disabled></td>
+					</tr>
+					<tr id="raw_input_wl_txpower_legacy_tr" class="rept ew">
+						<th>wl_TxPower</th>
+						<td><input type="text" class="input_32_table" name="wl_TxPower" value="<% nvram_get("wl_TxPower"); %>"></td>
+					</tr>
+					<tr id="raw_input_wl1_80211h_orig_tr" class="rept ew">
+						<th>wl1_80211h_orig</th>
+						<td><input type="text" class="input_32_table" name="wl1_80211h_orig" value="<% nvram_get("wl1_80211h"); %>"></td>
+					</tr>
+					<tr id="raw_input_acs_dfs_tr" class="rept ew">
+						<th>acs_dfs</th>
+						<td><input type="text" class="input_32_table" name="acs_dfs" value="<% nvram_get("acs_dfs"); %>"></td>
+					</tr>
+					<tr id="raw_input_w_setting_tr" class="rept ew">
+						<th>w_Setting</th>
+						<td><input type="text" class="input_32_table" name="w_Setting" value="1"></td>
+					</tr>
+					<tr id="raw_input_wl_txpower_tr" class="rept ew">
+						<th>wl_txpower</th>
+						<td><input type="text" class="input_32_table" name="wl_txpower" value="<% nvram_get("wl_txpower"); %>"></td>
+					</tr>
+					<tr id="raw_input_wl1_mumimo_tr" class="rept ew">
+						<th>wl1_mumimo</th>
+						<td><input type="text" class="input_32_table" name="wl1_mumimo" value="<% nvram_get("wl1_mumimo"); %>" disabled></td>
+					</tr>
+					<tr id="raw_input_smart_connect_x_tr" class="rept ew">
+						<th>smart_connect_x</th>
+						<td><input type="text" class="input_32_table" name="smart_connect_x" value="<% nvram_get("smart_connect_x"); %>"></td>
+					</tr>
+					<tr id="raw_input_wl_optimizexbox_tr" class="rept ew">
+						<th>wl_optimizexbox</th>
+						<td><input type="text" class="input_32_table" name="wl_optimizexbox" value="<% nvram_get("wl_optimizexbox"); %>"></td>
+					</tr>
+					<tr id="raw_input_wl_gmode_protection_tr" class="rept ew">
+						<th>wl_gmode_protection</th>
+						<td><input type="text" class="input_32_table" name="wl_gmode_protection" value="<% nvram_get("wl_gmode_protection"); %>"></td>
+					</tr>
+					<tr id="raw_input_wl_rateset_tr" class="rept ew">
+						<th>wl_rateset</th>
+						<td><input type="text" class="input_32_table" name="wl_rateset" value="<% nvram_get("wl_rateset"); %>"></td>
+					</tr>
+					<tr id="raw_input_wl_crypto_tr" class="rept ew">
+						<th>wl_crypto</th>
+						<td><input type="text" class="input_32_table" name="wl_crypto" value="<% nvram_get("wl_crypto"); %>"></td>
+					</tr>
+					<tr id="raw_input_wl_auth_mode_x_tr" class="rept ew">
+						<th>wl_auth_mode_x</th>
+						<td><input type="text" class="input_32_table" name="wl_auth_mode_x" value="<% nvram_get("wl_auth_mode_x"); %>"></td>
+					</tr>
+					<tr id="raw_input_wl_mfp_tr" class="rept ew">
+						<th>wl_mfp</th>
+						<td><input type="text" class="input_32_table" name="wl_mfp" value="<% nvram_get("wl_mfp"); %>"></td>
+					</tr>
+					<tr id="raw_input_wl_radius_ipaddr_tr" class="rept ew">
+						<th>wl_radius_ipaddr</th>
+						<td><input type="text" class="input_32_table" name="wl_radius_ipaddr" value="<% nvram_get("wl_radius_ipaddr"); %>"></td>
+					</tr>
+					<tr id="raw_input_wl_radius_key_tr" class="rept ew">
+						<th>wl_radius_key</th>
+						<td><input type="text" class="input_32_table" name="wl_radius_key" value="<% nvram_get("wl_radius_key"); %>"></td>
+					</tr>
+					<tr id="raw_input_wl_radius_port_tr" class="rept ew">
+						<th>wl_radius_port</th>
+						<td><input type="text" class="input_32_table" name="wl_radius_port" value="<% nvram_get("wl_radius_port"); %>"></td>
 					</tr>
 				</table>				
 						<div class="apply_gen" id="apply_btn">
