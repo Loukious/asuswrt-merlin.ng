@@ -15,6 +15,16 @@ calc_nvram: calc_nvram.o
 
 run_python:
 	@-type -P python >/dev/null 2>&1 && python $(TOP)/calc_nvram/calc_nvram.py $(TOP)
+	@if [ ! -f defaults_nv.h ]; then \
+		echo " [calc_nvram] fallback generate defaults_nv.h"; \
+		echo '#include "calc_nvram.h"' > defaults_nv.h; \
+		awk 'BEGIN{f=0} /struct nvram_tuple router_defaults\[\] = \{/ {f=1} f {print} f && /^\};/ {exit}' $(TOP)/shared/defaults.prep >> defaults_nv.h; \
+		if [ -f $(TOP)/shared/nvpriv.prep ]; then \
+			awk 'BEGIN{f=0} /static char \*large_nvram_list\[\] = \{/ {f=1} f {sub(/^static /,""); print} f && /^\};/ {exit}' $(TOP)/shared/nvpriv.prep >> defaults_nv.h; \
+		else \
+			echo 'char *large_nvram_list[] = {NULL};' >> defaults_nv.h; \
+		fi; \
+	fi
 
 install:
 

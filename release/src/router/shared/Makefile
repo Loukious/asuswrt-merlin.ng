@@ -208,6 +208,7 @@ OBJS += misc.o version.o files.o strings.o process.o
 OBJS += bin_sem_asus.o semaphore.o pids.o $(if $(wildcard notify_rc.c),notify_rc.o,prebuild/notify_rc.o)
 OBJS += discover.o
 OBJS += base64.o
+OBJS += compat_missing.o
 OBJS += nvparse.o
 OBJS += bwdpi_utils.o
 OBJS += bwdpi_utils.o
@@ -229,12 +230,13 @@ ifeq ($(or $(RTCONFIG_AMAS_WGN),$(RTCONFIG_MULTILAN_CFG)),y)
 OBJS += $(if $(wildcard amas_wgn_shared.c),amas_wgn_shared.o,prebuild/amas_wgn_shared.o)
 endif
 ifeq ($(RTCONFIG_MULTILAN_CFG), y)
-OBJS += $(if $(wildcard amas_apg_shared.c),amas_apg_shared.o,prebuild/amas_apg_shared.o)
+OBJS += $(if $(wildcard amas_apg_shared.c),amas_apg_shared.o,$(if $(wildcard prebuild/amas_apg_shared.o),prebuild/amas_apg_shared.o,amas_apg_shared_stub.o))
 endif
 ifeq ($(RTCONFIG_RGBLED),y)
 OBJS += $(if $(wildcard aura_rgb.c),aura_rgb.o,prebuild/aura_rgb.o)
 endif
 OBJS += timer_utils.o
+OBJS += amas_apg_shared_stub.o
 ifeq ($(RTCONFIG_TRAFFIC_LIMITER),y)
 OBJS += tld_utils.o
 endif
@@ -570,7 +572,7 @@ LDFLAGS += -L$(TOP)/ateed/ -latee
 endif
 
 ifeq ($(or $(RTCONFIG_GEARUPPLUGIN), $(RTCONFIG_UUPLUGIN)), y)
-OBJS += $(if $(wildcard uu_utils.c),uu_utils.o,prebuild/uu_utils.o)
+OBJS += $(if $(wildcard uu_utils.c),uu_utils.o,$(if $(wildcard prebuild/uu_utils.o),prebuild/uu_utils.o,))
 endif
 
 ifeq ($(BUILD_NAME),$(filter $(BUILD_NAME),RT-BE82M GS-BE18000 GS-BE12000 GS7_PRO GT7))

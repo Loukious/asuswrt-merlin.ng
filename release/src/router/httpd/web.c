@@ -3696,6 +3696,7 @@ static void convert_mswan_wans_settings(const char *new_wans_dualwan)
 #define NVRAM_MODIFIED_DUALWAN_REMOVEUSB	128	/* ex: {wan, usb}  =>  {wan, none} */
 #define NVRAM_MODIFIED_SDN_BIT				256
 
+#ifdef RTCONFIG_MULTILAN_CFG
 static int set_sdn_nvram(const char* name, const char *prefix, json_object *root, int *found)
 {
 	char prefix_buf[32], tmp[100], *next, *value;
@@ -3717,6 +3718,7 @@ static int set_sdn_nvram(const char* name, const char *prefix, json_object *root
 	}
 	return 0;
 }
+#endif	// RTCONFIG_MULTILAN_CFG
 
 
 #ifdef RTCONFIG_CFGSYNC
