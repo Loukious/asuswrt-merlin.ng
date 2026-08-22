@@ -2003,6 +2003,12 @@ isValidCountryCode(const char *Ccode)
 	const char *c = Ccode;
 	int i = 0;
 
+	if (Ccode == NULL)
+		return 0;
+
+	if (Ccode[0] == '#' && (Ccode[1] == 'a' || Ccode[1] == 'A') && Ccode[2] == '\0')
+		return 1;
+
 	if (strlen(Ccode) == 2) {
 		while (i < 2) { //0~9, A~F
 			if ((*c > 0x2F && *c < 0x3A) || (*c > 0x40 && *c < 0x5B)) {
