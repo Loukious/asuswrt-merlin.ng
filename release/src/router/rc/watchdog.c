@@ -11948,7 +11948,7 @@ void auto_firmware_check_merlin()
 			asus_ctrl_sku_update();
 #endif
 
-#ifdef RTCONFIG_ASD
+#if defined(RTCONFIG_ASD) && !defined(RTCONFIG_ASD_2_1)
 		//notify asd to download version file
 		if (pids("asd"))
 		{
