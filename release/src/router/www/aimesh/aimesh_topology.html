@@ -195,12 +195,13 @@ var str_AiMesh_Topology_AntDet = stringSafeGet("<#AiMesh_Topology_AntDet#>");
 var AiMesh_Topology_AntDet_Desc = stringSafeGet("<#AiMesh_Topology_AntDet_Desc#>");
 
 var aimesh_data = {
-	cfg_clientlist : "", sta_binding_list_json : {}
+	cfg_clientlist : [], sta_binding_list_json : {}
 }
 var multi_model_icon_array = "";
 $.getJSON("https://nw-dlcdnet.asus.com/plugin/js/extend_model_icon.json", {_: new Date().getTime()},
 	function(data){
 		multi_model_icon_array = data;
+		if(!Array.isArray(aimesh_data.cfg_clientlist)) return;
 		var specific_node_data = aimesh_data.cfg_clientlist.filter(function(item, index, _array){
 			return (item.mac == current_click_mac);
 		})[0];

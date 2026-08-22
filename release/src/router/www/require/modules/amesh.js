@@ -1,18 +1,29 @@
-﻿function updateAMeshCount() {
+﻿function normalize_cfg_clientlist(_list) {
+	if(Array.isArray(_list))
+		return _list;
+	if(_list != null && typeof _list == "object") {
+		try {
+			return Object.keys(_list).map(function(key){
+				return _list[key];
+			});
+		}
+		catch(e) {
+			return [];
+		}
+	}
+	return [];
+}
+
+function updateAMeshCount() {
 	if(lastName != "iconAMesh") {
 		$.ajax({
 			url: '/ajax_onboarding.asp',
 			dataType: 'script', 
 			success: function(response) {
 				var get_cfg_clientlist_num = 0;
-				if(get_cfg_clientlist.length > 1) {
-					for (var idx in get_cfg_clientlist) {
-						if(get_cfg_clientlist.hasOwnProperty(idx)) {
-							if(idx != 0) {
-								get_cfg_clientlist_num++;
-							}
-						}
-					}
+				var cfg_clientlist = normalize_cfg_clientlist((typeof get_cfg_clientlist !== "undefined") ? get_cfg_clientlist : []);
+				if(cfg_clientlist.length > 1) {
+					get_cfg_clientlist_num = cfg_clientlist.length - 1;
 					show_AMesh_status(get_cfg_clientlist_num, 1);
 				}
 				else 
@@ -22,7 +33,9 @@
 	}
 }
 function show_AMesh_status(num, flag) {
-	document.getElementById("ameshNumber").innerHTML = "<#AiMesh_Node#>: <span>" + num + "</span>";
+	var ameshNumberObj = document.getElementById("ameshNumber");
+	if(ameshNumberObj)
+		ameshNumberObj.innerHTML = "<#AiMesh_Node#>: <span>" + num + "</span>";
 }
 function initial_amesh_obj() {
 	//initial amesh obj
@@ -47,7 +60,7 @@ function check_wl_auth_support(_obj, _wl_unit) {
 			support_auth = ["psk2", "pskpsk2", "psk2sae"];
 	}
 	else{
-		var re_count = httpApi.hookGet("get_cfg_clientlist").length;
+		var re_count = normalize_cfg_clientlist(httpApi.hookGet("get_cfg_clientlist")).length;
 		if(re_count > 1)// have re node
 			support_auth = ["psk2", "pskpsk2", "psk2sae"];
 		else
@@ -94,13 +107,15 @@ function AiMesh_confirm_msg(_name, _value) {
 		else
 			return true;
 	};
-	var check_wireless_ssid_psk = function(_value) {
-		var current_ssid = _value["current"]["ssid"];
-		var current_psk = _value["current"]["psk"];
-		var original_ssid = _value["original"]["ssid"];
-		var original_psk = _value["original"]["psk"];
-		var current_node_count = [<% get_cfg_clientlist(); %>][0].length - 1;
-		var total_node_count = [<% get_onboardingstatus(); %>][0]["cfg_obcount"];
+		var check_wireless_ssid_psk = function(_value) {
+			var current_ssid = _value["current"]["ssid"];
+			var current_psk = _value["current"]["psk"];
+			var original_ssid = _value["original"]["ssid"];
+			var original_psk = _value["original"]["psk"];
+			var current_node_count = normalize_cfg_clientlist([<% get_cfg_clientlist(); %>][0]).length - 1;
+			if(current_node_count < 0)
+				current_node_count = 0;
+			var total_node_count = [<% get_onboardingstatus(); %>][0]["cfg_obcount"];
 		if(total_node_count != "" && current_node_count < total_node_count) {
 			if(current_ssid == original_ssid && current_psk == original_psk)
 				return true;
