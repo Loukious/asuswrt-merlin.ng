@@ -2103,6 +2103,10 @@ define RouterOptions
 		sed -i "/RTCONFIG_LIBASC/d" $(1); \
 		echo "RTCONFIG_LIBASC=y" >>$(1); \
 	fi;
+	if [ "$(ASD21)" = "y" ]; then \
+		sed -i "/RTCONFIG_ASD_2_1/d" $(1); \
+		echo "RTCONFIG_ASD_2_1=y" >>$(1); \
+	fi;
 	if [ "$(MXL371X)" = "y" ]; then \
 		sed -i "/RTCONFIG_MXL371X/d" $(1); \
 		echo "RTCONFIG_MXL371X=y" >>$(1); \
@@ -7323,4 +7327,3 @@ get_extendno:
 .PHONY: dummy
 .PHONY: pre_tools
 .PHONY: get_extendno
-
