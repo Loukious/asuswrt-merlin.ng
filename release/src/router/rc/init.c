@@ -4103,6 +4103,27 @@ void init_subunit(void)
 //  btn_xxxx_gpio
 //  led_xxxx_gpio
 static int reset_gpio = 1;
+
+#if defined(HND_ROUTER) && defined(RTCONFIG_DUALWAN)
+static int
+wan_dot1q_enabled(const char *prefix, int iptv_active)
+{
+#ifdef RTCONFIG_MULTISERVICE_WAN
+	(void)prefix;
+	(void)iptv_active;
+	return 0;
+#else
+	int vid;
+
+	if (iptv_active || !nvram_pf_match(prefix, "dot1q", "1"))
+		return 0;
+
+	vid = nvram_pf_get_int(prefix, "vid");
+	return vid >= 3 && vid <= 4094 && (vid < 3880 || vid > 3887);
+#endif
+}
+#endif
+
 int init_nvram(void)
 {
 	const int sw_mode __attribute__((unused)) = sw_mode();
@@ -17743,17 +17764,32 @@ int init_nvram(void)
 
 				get_wans_dualwan_str(wancaps, sizeof(wancaps));
 				if (strlen(wancaps) > 0) {
+					int iptv_active = ((strlen(nvram_safe_get("switch_wantag")) > 0 &&
+						!nvram_match("switch_wantag", "none")) ||
+						(nvram_match("switch_wantag", "none") &&
+						nvram_get_int("switch_stb_x") > 0));
+
 					set_wan_phy("");
 					for(unit = WAN_UNIT_FIRST; unit < WAN_UNIT_MAX; ++unit) {
 						if (get_dualwan_by_unit(unit) == WANS_DUALWAN_IF_LAN) {
+							char *wanphy = NULL;
 							if (nvram_match("wans_lanport", "1"))
-								add_wan_phy("eth4");
+								wanphy = "eth4";
 							else if (nvram_match("wans_lanport", "2"))
-								add_wan_phy("eth3");
+								wanphy = "eth3";
 							else if (nvram_match("wans_lanport", "3"))
-								add_wan_phy("eth2");
+								wanphy = "eth2";
 							else if (nvram_match("wans_lanport", "4"))
-								add_wan_phy("eth1");
+								wanphy = "eth1";
+							if (wanphy) {
+								char wan_prefix[16];
+								snprintf(wan_prefix, sizeof(wan_prefix), "wan%d_", unit);
+								if (wan_dot1q_enabled(wan_prefix, iptv_active)) {
+									snprintf(wan_if, sizeof(wan_if), "%s.v0", wanphy);
+									add_wan_phy(wan_if);
+								} else
+									add_wan_phy(wanphy);
+							}
 						}
 						else if (get_dualwan_by_unit(unit) == WANS_DUALWAN_IF_2G)
 							add_wan_phy("eth5");
@@ -17767,8 +17803,14 @@ int init_nvram(void)
 								else
 									add_wan_phy("eth0");
 							}
-							else
-								add_wan_phy("eth0");
+							else {
+								char wan_prefix[16];
+								snprintf(wan_prefix, sizeof(wan_prefix), "wan%d_", unit);
+								if (wan_dot1q_enabled(wan_prefix, iptv_active))
+									add_wan_phy("eth0.v0");
+								else
+									add_wan_phy("eth0");
+							}
 						}
 						else if (get_dualwan_by_unit(unit) == WANS_DUALWAN_IF_USB)
 							add_wan_phy("usb");
@@ -17803,19 +17845,34 @@ int init_nvram(void)
 
 				get_wans_dualwan_str(wancaps, sizeof(wancaps));
 				if (strlen(wancaps) > 0) {
+					int iptv_active = ((strlen(nvram_safe_get("switch_wantag")) > 0 &&
+						!nvram_match("switch_wantag", "none")) ||
+						(nvram_match("switch_wantag", "none") &&
+						nvram_get_int("switch_stb_x") > 0));
+
 					set_wan_phy("");
 					for(unit = WAN_UNIT_FIRST; unit < WAN_UNIT_MAX; ++unit) {
 						if (get_dualwan_by_unit(unit) == WANS_DUALWAN_IF_LAN) {
+							char *wanphy = NULL;
 							if (nvram_match("wans_lanport", "1"))
-								add_wan_phy("eth4");
+								wanphy = "eth4";
 							else if (nvram_match("wans_lanport", "2"))
-								add_wan_phy("eth3");
+								wanphy = "eth3";
 							else if (nvram_match("wans_lanport", "3"))
-								add_wan_phy("eth2");
+								wanphy = "eth2";
 							else if (nvram_match("wans_lanport", "4"))
-								add_wan_phy("eth1");
+								wanphy = "eth1";
 							else if (nvram_match("wans_lanport", "5"))
-								add_wan_phy("eth5");
+								wanphy = "eth5";
+							if (wanphy) {
+								char wan_prefix[16];
+								snprintf(wan_prefix, sizeof(wan_prefix), "wan%d_", unit);
+								if (wan_dot1q_enabled(wan_prefix, iptv_active)) {
+									snprintf(wan_if, sizeof(wan_if), "%s.v0", wanphy);
+									add_wan_phy(wan_if);
+								} else
+									add_wan_phy(wanphy);
+							}
 						}
 						else if (get_dualwan_by_unit(unit) == WANS_DUALWAN_IF_2G)
 							add_wan_phy("eth6");
@@ -17829,8 +17886,14 @@ int init_nvram(void)
 								else
 									add_wan_phy("eth0");
 							}
-							else
-								add_wan_phy("eth0");
+							else {
+								char wan_prefix[16];
+								snprintf(wan_prefix, sizeof(wan_prefix), "wan%d_", unit);
+								if (wan_dot1q_enabled(wan_prefix, iptv_active))
+									add_wan_phy("eth0.v0");
+								else
+									add_wan_phy("eth0");
+							}
 						}
 						else if (get_dualwan_by_unit(unit) == WANS_DUALWAN_IF_USB)
 							add_wan_phy("usb");
