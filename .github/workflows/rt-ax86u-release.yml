@@ -81,12 +81,12 @@ jobs:
 
       - name: Build and package firmware
         env:
-          BUILDREV: "1"
           TOOLCHAIN_BASE: /opt/toolchains
         run: |
+          build_revision="${GITHUB_SHA:0:10}"
           chown -R builder:builder "$GITHUB_WORKSPACE"
           runuser --user builder -- env \
-            BUILDREV="$BUILDREV" \
+            BUILDREV="$build_revision" \
             TOOLCHAIN_BASE="$TOOLCHAIN_BASE" \
             "$GITHUB_WORKSPACE/asuswrt-merlin.ng/tools/ci/build-rt-ax86u.sh" \
             "$GITHUB_WORKSPACE/dist/rt-ax86u"
