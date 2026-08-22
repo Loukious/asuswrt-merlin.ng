@@ -67,6 +67,7 @@ char pppd_version[] = VERSION;
 static int seen_devnam[2] = {0, 0};
 static char *pppoe_reqd_mac = NULL;
 static char *host_uniq = NULL;
+static int pppoe_randmac = 0;
 
 /* From sys-linux.c in pppd -- MUST FIX THIS! */
 extern int new_style_driver;
@@ -94,10 +95,69 @@ static option_t Options[] = {
       "Only connect to specified MAC address" },
     { "host-uniq", o_string, &host_uniq,
       "Specify custom Host-Uniq" },
+    { "rp_pppoe_randmac", o_bool, &pppoe_randmac,
+      "Randomize local WAN MAC before each PPPoE discovery attempt" },
     { NULL }
 };
 int (*OldDevnameHook)(char *cmd, char **argv, int doit) = NULL;
 static PPPoEConnection *conn = NULL;
+
+static void
+PPPOERandomizeMac(void)
+{
+    int s = -1, f = -1;
+    int up = 0;
+    struct ifreq ifr;
+    unsigned char ea[ETH_ALEN];
+
+    if (!pppoe_randmac || !conn || !conn->ifName || !conn->ifName[0] || existingSession)
+	return;
+
+    s = socket(AF_INET, SOCK_DGRAM, 0);
+    if (s < 0) {
+	warn("PPPoE random MAC: socket failed on %s: %m", conn->ifName);
+	return;
+    }
+
+    memset(&ifr, 0, sizeof(ifr));
+    strlcpy(ifr.ifr_name, conn->ifName, sizeof(ifr.ifr_name));
+
+    if (ioctl(s, SIOCGIFFLAGS, &ifr) == 0) {
+	if ((up = (ifr.ifr_flags & IFF_UP)) != 0) {
+	    ifr.ifr_flags &= ~IFF_UP;
+	    ioctl(s, SIOCSIFFLAGS, &ifr);
+	}
+    }
+
+    f = open("/dev/urandom", O_RDONLY);
+    if (f < 0 || read(f, ea, sizeof(ea)) != (ssize_t) sizeof(ea)) {
+	warn("PPPoE random MAC: unable to read entropy for %s: %m", conn->ifName);
+	goto restore_ifstate;
+    }
+
+    /* Force unicast + locally administered MAC. */
+    ea[0] &= 0xFE;
+    ea[0] |= 0x02;
+
+    memcpy(ifr.ifr_hwaddr.sa_data, ea, sizeof(ea));
+    ifr.ifr_hwaddr.sa_family = ARPHRD_ETHER;
+    if (ioctl(s, SIOCSIFHWADDR, &ifr) == 0) {
+	info("PPPoE random MAC: %s -> %02X:%02X:%02X:%02X:%02X:%02X",
+	     conn->ifName, ea[0], ea[1], ea[2], ea[3], ea[4], ea[5]);
+    } else {
+	warn("PPPoE random MAC: failed to set %s: %m", conn->ifName);
+    }
+
+restore_ifstate:
+    if (up && ioctl(s, SIOCGIFFLAGS, &ifr) == 0) {
+	ifr.ifr_flags |= IFF_UP;
+	ioctl(s, SIOCSIFFLAGS, &ifr);
+    }
+
+    if (f >= 0)
+	close(f);
+    close(s);
+}
 
 /**********************************************************************
  * %FUNCTION: PPPOEInitDevice
@@ -149,6 +209,8 @@ PPPOEConnectDevice(void)
     /* Restore configuration */
     lcp_allowoptions[0].mru = conn->mtu;
     lcp_wantoptions[0].mru = conn->mru;
+
+    PPPOERandomizeMac();
 
     /* Update maximum MRU */
     s = socket(AF_INET, SOCK_DGRAM, 0);

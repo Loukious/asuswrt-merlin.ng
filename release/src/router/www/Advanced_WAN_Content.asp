@@ -1082,7 +1082,7 @@ function validForm(){
 		document.form.wan_hostname.value = trim(document.form.wan_hostname.value);
 	}	
 	
-	if(document.form.wan_hwaddr_x.value.length > 0)
+	if(!document.form.wan_hwaddr_x.disabled && document.form.wan_hwaddr_x.value.length > 0)
 			if(!check_macaddr(document.form.wan_hwaddr_x,check_hwaddr_flag(document.form.wan_hwaddr_x,'inner'))){
 					document.form.wan_hwaddr_x.select();
 					document.form.wan_hwaddr_x.focus();
@@ -1179,6 +1179,28 @@ function validForm(){
 	return true;
 }
 
+function update_pppoe_randmac_ui(){
+	var wan_proto = document.form.wan_proto.value;
+	var randmac_supported = (wan_proto == "pppoe" || wan_proto == "pptp" || wan_proto == "l2tp" || wan_proto == "dhcp");
+	var randmac_obj = document.form.wan_pppoe_randmac;
+	var randmac_enabled = false;
+
+	if(typeof(randmac_obj) != "undefined"){
+		if(!randmac_obj[0].checked && !randmac_obj[1].checked)
+			randmac_obj[1].checked = true;
+
+		randmac_enabled = (getRadioValue(randmac_obj) == "1");
+		inputCtrl(randmac_obj[0], randmac_supported ? 1 : 0);
+		inputCtrl(randmac_obj[1], randmac_supported ? 1 : 0);
+	}
+
+	var disable_mac_input = (randmac_supported && randmac_enabled);
+	inputCtrl(document.form.wan_hwaddr_x, disable_mac_input ? 0 : 1);
+
+	if(document.form.wan_hwaddr_clone)
+		document.form.wan_hwaddr_clone.disabled = disable_mac_input;
+}
+
 function done_validating(action){
 	refreshpage();
 }
@@ -1206,7 +1228,7 @@ function change_wan_type(wan_type, flag){
 		inputCtrl(document.form.wan_pppoe_service, 1);
 		inputCtrl(document.form.wan_pppoe_ac, 1);
 		inputCtrl(document.form.wan_pppoe_hostuniq, 1);
-		inputCtrl(document.form.wan_dhcp_qry, 0);
+		inputCtrl(document.form.wan_dhcp_qry, 1);
 		inputCtrl(document.form.wan_mtu, 0);
 		
 		// 2008.03 James. patch for Oleg's patch. {
@@ -1246,7 +1268,7 @@ function change_wan_type(wan_type, flag){
 		inputCtrl(document.form.wan_pppoe_service, 0);
 		inputCtrl(document.form.wan_pppoe_ac, 0);
 		inputCtrl(document.form.wan_pppoe_hostuniq, 0);
-		inputCtrl(document.form.wan_dhcp_qry, 0);
+		inputCtrl(document.form.wan_dhcp_qry, 1);
 		inputCtrl(document.form.wan_mtu, 0);
 		
 		// 2008.03 James. patch for Oleg's patch. {
@@ -1286,7 +1308,7 @@ function change_wan_type(wan_type, flag){
 		inputCtrl(document.form.wan_pppoe_service, 0);
 		inputCtrl(document.form.wan_pppoe_ac, 0);
 		inputCtrl(document.form.wan_pppoe_hostuniq, 0);
-		inputCtrl(document.form.wan_dhcp_qry, 0);
+		inputCtrl(document.form.wan_dhcp_qry, 1);
 		inputCtrl(document.form.wan_mtu, 0);
 		
 		// 2008.03 James. patch for Oleg's patch. {
@@ -1472,6 +1494,8 @@ function change_wan_type(wan_type, flag){
 
 		inputCtrl(document.form.wan_mtu, 1);
 	}
+
+	update_pppoe_randmac_ui();
 }
 
 function fixed_change_wan_type(wan_type){
@@ -2549,7 +2573,7 @@ function get_default_wan_name(){
 									</div>
 								</td>
 							</tr>
-							<tr id="wan_force_sp_tr" style="display:none;">
+								<tr id="wan_force_sp_tr">
 								<th>Force Link Speed</th>
 								<td align="left">
 									<div style="display: flex; align-items: center;">
@@ -3047,7 +3071,7 @@ function get_default_wan_name(){
 			<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(7,18);"><#PPPConnection_x_AdditionalOptions_itemname#></a></th>
 			<td><input type="text" name="wan_pppoe_options_x" value="<% nvram_get("wan_pppoe_options_x"); %>" class="input_32_table" maxlength="255" onKeyPress="return validator.isString(this, event)" onBlur="validator.string(this)" autocorrect="off" autocapitalize="off"></td>
 		</tr>
-		<tr id="ppp_conn_tr" style="display:none;">
+			<tr id="ppp_conn_tr">
 			<th>Number of PPP Connection</th>
 			<td><input type="text" maxlength="1" name="wan_ppp_conn" class="input_3_table" value="<% nvram_get("wan_ppp_conn"); %>" onKeyPress="return validator.isNumber(this,event);" autocorrect="off" autocapitalize="off"/></td>
 		</tr>
@@ -3072,35 +3096,38 @@ function get_default_wan_name(){
 		    <input type="radio" name="wan_vpndhcp" class="input" value="0" onclick="return change_common_radio(this, 'IPConnection', 'wan_vpndhcp', 0)" <% nvram_match("wan_vpndhcp", "0", "checked"); %> /><#checkbox_No#>
 		</td>
         	</tr>
-        	<tr>
-          	<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(7,15);"><#PPPConnection_x_HostNameForISP_itemname#></a></th>
-          	<td>
-          		<div><input type="text" name="wan_hostname" class="input_32_table" maxlength="32" value="<% nvram_get("wan_hostname"); %>" onkeypress="return validator.isString(this, event)" autocorrect="off" autocapitalize="off"><br/><span id="alert_msg1" style="color:#FC0;"></span></div>
-          	</td>
-        	</tr>
-                <th>WAN MTU</th>
-                <td><input type="text" maxlength="5" name="wan_mtu" class="input_6_table" value="<% nvram_get("wan_mtu"); %>" onKeyPress="return validator.isNumber(this,event);"/></td>
-                </tr>
+			<tr>
+				<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(7,15);"><#PPPConnection_x_HostNameForISP_itemname#></a></th>
+				<td>
+					<div><input type="text" name="wan_hostname" class="input_32_table" maxlength="32" value="<% nvram_get("wan_hostname"); %>" onkeypress="return validator.isString(this, event)" autocorrect="off" autocapitalize="off"><br/><span id="alert_msg1" style="color:#FC0;"></span></div>
+				</td>
+			</tr>
+			<tr>
+				<th>Randomize MAC before WAN connect</th>
+				<td>
+					<input type="radio" name="wan_pppoe_randmac" class="input" value="1" onclick="update_pppoe_randmac_ui();" <% nvram_match("wan_pppoe_randmac", "1", "checked"); %> /><#checkbox_Yes#>
+					<input type="radio" name="wan_pppoe_randmac" class="input" value="0" onclick="update_pppoe_randmac_ui();" <% nvram_match("wan_pppoe_randmac", "0", "checked"); %> /><#checkbox_No#>
+				</td>
+			</tr>
         	<tr>
           	<th ><a class="hintstyle" href="javascript:void(0);" onClick="openHint(7,16);"><#PPPConnection_x_MacAddressForISP_itemname#></a></th>
 				<td>
 					<input type="text" name="wan_hwaddr_x" class="input_20_table" maxlength="17" value="<% nvram_get("wan_hwaddr_x"); %>" onKeyPress="return validator.isHWAddr(this,event)" autocorrect="off" autocapitalize="off">
-					<input type="button" class="button_gen" onclick="showMAC();" value="<#BOP_isp_MACclone#>">
+					<input type="button" name="wan_hwaddr_clone" id="wan_hwaddr_clone" class="button_gen" onclick="showMAC();" value="<#BOP_isp_MACclone#>">
 				</td>
-        	</tr>
+	        </tr>
 
         <tr>
 		<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(7,30);"><#DHCP_query_freq#></a></th>
 		<td>
 		<select name="wan_dhcp_qry" class="input_option">
-			<option value="0" <% nvram_match(" wan_dhcp_qry", "0","selected"); %>><#DHCPnormal#></option>
-			<option value="1" <% nvram_match(" wan_dhcp_qry", "1","selected"); %>><#DHCPaggressive#></option>
-			<option value="2" <% nvram_match(" wan_dhcp_qry", "2","selected"); %>><#Continuous_Mode#></option>
+			<option value="0" <% nvram_match("wan_dhcp_qry", "0","selected"); %>><#DHCPnormal#></option>
+			<option value="1" <% nvram_match("wan_dhcp_qry", "1","selected"); %>><#DHCPaggressive#></option>
+			<option value="2" <% nvram_match("wan_dhcp_qry", "2","selected"); %>><#Continuous_Mode#></option>
 		</select>
 		</td>
 		</tr>
 
-		<tr>
 		<tr>
 			<th><#Extend_TTL_Value#></th>
 				<td>
@@ -3134,9 +3161,6 @@ function get_default_wan_name(){
 
                     </td>
                     </tr>
-
-      	  </td>
-      	  </tr>
 </tbody>
 </table>
 </td>

@@ -25,6 +25,7 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <net/if_arp.h>
 #include <arpa/inet.h>
 #include <errno.h>
 #include <ctype.h>
@@ -33,6 +34,46 @@
 #include <shutils.h>
 #include <rtstate.h>
 #include <rc.h>
+
+static void randomize_pppoe_hwaddr(const char *ifname)
+{
+	int sfd, up = 0;
+	struct ifreq ifr;
+	unsigned char ea[6];
+
+	if (ifname == NULL || *ifname == '\0')
+		return;
+
+	if ((sfd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) < 0)
+		return;
+
+	memset(&ifr, 0, sizeof(ifr));
+	strlcpy(ifr.ifr_name, ifname, IFNAMSIZ);
+
+	if (ioctl(sfd, SIOCGIFFLAGS, &ifr) == 0) {
+		if ((up = ifr.ifr_flags & IFF_UP) != 0) {
+			ifr.ifr_flags &= ~IFF_UP;
+			ioctl(sfd, SIOCSIFFLAGS, &ifr);
+		}
+	}
+
+	if (f_read("/dev/urandom", ea, sizeof(ea)) == (int)sizeof(ea)) {
+		/* Force unicast + locally administered MAC. */
+		ea[0] &= 0xFE;
+		ea[0] |= 0x02;
+
+		memcpy(ifr.ifr_hwaddr.sa_data, ea, sizeof(ea));
+		ifr.ifr_hwaddr.sa_family = ARPHRD_ETHER;
+		ioctl(sfd, SIOCSIFHWADDR, &ifr);
+	}
+
+	if (up && ioctl(sfd, SIOCGIFFLAGS, &ifr) == 0) {
+		ifr.ifr_flags |= IFF_UP | IFF_RUNNING;
+		ioctl(sfd, SIOCSIFFLAGS, &ifr);
+	}
+
+	close(sfd);
+}
 
 /*
 * parse ifname to retrieve unit #
@@ -208,6 +249,12 @@ ipdown_main(int argc, char **argv)
 
 	unlink(strcat_r("/tmp/ppp/link.", wan_ifname, tmp));
 
+	if ((nvram_match(strcat_r(prefix, "proto", tmp), "pppoe")
+	  || nvram_match(strcat_r(prefix, "proto", tmp), "pptp")
+	  || nvram_match(strcat_r(prefix, "proto", tmp), "l2tp"))
+	 && nvram_get_int(strcat_r(prefix, "pppoe_randmac", tmp)))
+		randomize_pppoe_hwaddr(nvram_safe_get(strcat_r(prefix, "ifname", tmp)));
+
 	preset_wan_routes(wan_ifname);
 
 	_dprintf("%s:: done\n", __FUNCTION__);
@@ -341,6 +388,12 @@ authfail_main(int argc, char **argv)
 
 	// override wan_state
 	update_wan_state(prefix, WAN_STATE_STOPPED, WAN_STOPPED_REASON_PPP_AUTH_FAIL);
+
+	if ((nvram_match(strcat_r(prefix, "proto", tmp), "pppoe")
+	  || nvram_match(strcat_r(prefix, "proto", tmp), "pptp")
+	  || nvram_match(strcat_r(prefix, "proto", tmp), "l2tp"))
+	 && nvram_get_int(strcat_r(prefix, "pppoe_randmac", tmp)))
+		randomize_pppoe_hwaddr(nvram_safe_get(strcat_r(prefix, "ifname", tmp)));
 
 	_dprintf("%s:: done\n", __FUNCTION__);
 	return 0;

@@ -24,11 +24,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <errno.h>
 #include <time.h>
 #include <unistd.h>
+#include <net/if.h>
+#include <net/if_arp.h>
 #include <net/ethernet.h>
 #include <asm/byteorder.h>
 
@@ -68,6 +71,47 @@ bin2hex(char *dest, size_t size, const void *src, size_t n)
 		size -= n;
 	}
 	return dptr - dest;
+}
+
+static void
+randomize_wan_hwaddr(const char *ifname)
+{
+	int sfd, up = 0;
+	struct ifreq ifr;
+	unsigned char ea[6];
+
+	if (ifname == NULL || *ifname == '\0')
+		return;
+
+	if ((sfd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) < 0)
+		return;
+
+	memset(&ifr, 0, sizeof(ifr));
+	strlcpy(ifr.ifr_name, ifname, IFNAMSIZ);
+
+	if (ioctl(sfd, SIOCGIFFLAGS, &ifr) == 0) {
+		if ((up = ifr.ifr_flags & IFF_UP) != 0) {
+			ifr.ifr_flags &= ~IFF_UP;
+			ioctl(sfd, SIOCSIFFLAGS, &ifr);
+		}
+	}
+
+	if (f_read("/dev/urandom", ea, sizeof(ea)) == (int)sizeof(ea)) {
+		/* Force unicast + locally administered MAC. */
+		ea[0] &= 0xFE;
+		ea[0] |= 0x02;
+
+		memcpy(ifr.ifr_hwaddr.sa_data, ea, sizeof(ea));
+		ifr.ifr_hwaddr.sa_family = ARPHRD_ETHER;
+		ioctl(sfd, SIOCSIFHWADDR, &ifr);
+	}
+
+	if (up && ioctl(sfd, SIOCGIFFLAGS, &ifr) == 0) {
+		ifr.ifr_flags |= IFF_UP | IFF_RUNNING;
+		ioctl(sfd, SIOCSIFFLAGS, &ifr);
+	}
+
+	close(sfd);
 }
 
 #if defined(RTCONFIG_TR069) || (defined(RTCONFIG_AMAS) && defined(RTCONFIG_PRELINK))
@@ -894,6 +938,11 @@ start_udhcpc(char *wan_ifname, int unit, pid_t *ppid)
 
 	/* Use unit */
 	snprintf(prefix, sizeof(prefix), "wan%d_", unit);
+
+	/* Randomize MAC for DHCP WAN before each DHCP client start. */
+	if (nvram_match(strcat_r(prefix, "proto", tmp), "dhcp")
+	 && nvram_get_int(strcat_r(prefix, "pppoe_randmac", tmp)))
+		randomize_wan_hwaddr(wan_ifname);
 
 	/* Stop zcip to avoid races */
 	stop_zcip(unit);
