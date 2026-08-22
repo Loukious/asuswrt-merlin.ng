@@ -61,6 +61,24 @@ jobs:
             release/src-rt-5.02L.07p2axhnd
             tools
 
+      - name: Restore firmware Git metadata
+        working-directory: asuswrt-merlin.ng
+        run: |
+          if git rev-parse --verify HEAD >/dev/null 2>&1; then
+            exit 0
+          fi
+
+          git init --quiet
+          git config core.repositoryFormatVersion 1
+          git config extensions.partialClone origin
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          git config remote.origin.promisor true
+          git config remote.origin.partialclonefilter blob:none
+          git -c protocol.version=2 fetch --quiet --no-tags --depth=1 \
+            --filter=blob:none origin "$GITHUB_SHA"
+          git update-ref refs/heads/actions "$GITHUB_SHA"
+          git symbolic-ref HEAD refs/heads/actions
+
       - name: Check out Broadcom toolchains
         uses: actions/checkout@v7
         with:
@@ -120,6 +138,30 @@ jobs:
       - name: Create or update release
         run: |
           set -Eeuo pipefail
+          shopt -s nullglob
+          archives=(release-assets/RT-AX86U_*.zip)
+          if (( ${#archives[@]} != 1 )); then
+            echo "Expected exactly one RT-AX86U firmware archive" >&2
+            exit 1
+          fi
+
+          archive_name="$(basename "${archives[0]}")"
+          expected_revision="${GITHUB_SHA:0:10}"
+          if [[ "$archive_name" != *"-g${expected_revision}.zip" ]]; then
+            echo "Firmware archive does not match revision $expected_revision" >&2
+            exit 1
+          fi
+
+          firmware_version="${archive_name#RT-AX86U_}"
+          firmware_version="${firmware_version%-g*.zip}"
+          firmware_version="${firmware_version/_/.}"
+          firmware_version="${firmware_version/_/-}"
+          expected_tag="rt-ax86u-$firmware_version"
+          if [[ "$RELEASE_TAG" != "$expected_tag" ]]; then
+            echo "Release tag $RELEASE_TAG does not match firmware $expected_tag" >&2
+            exit 1
+          fi
+
           if find release-assets -type f -iname '*cferom*' | grep -q .; then
             echo "Refusing to release a CFE firmware image" >&2
             exit 1
@@ -127,6 +169,18 @@ jobs:
 
           assets=(release-assets/*)
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh api --method PATCH \
+              "repos/$GH_REPO/git/refs/tags/$RELEASE_TAG" \
+              --field sha="$GITHUB_SHA" \
+              --field force=true >/dev/null
+            gh release edit "$RELEASE_TAG" --target "$GITHUB_SHA"
+            while IFS= read -r existing_asset; do
+              if [[ "$existing_asset" == RT-AX86U_* && \
+                    "$existing_asset" != "$archive_name" && \
+                    "$existing_asset" != "$archive_name.sha256" ]]; then
+                gh release delete-asset "$RELEASE_TAG" "$existing_asset" --yes
+              fi
+            done < <(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')
             gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
           else
             gh release create "$RELEASE_TAG" "${assets[@]}" \
@@ -135,4 +189,27 @@ jobs:
               --prerelease \
               --notes "Experimental RT-AX86U port. Flash only the _pureubi.w file inside the archive; never use a _cferom_ image." \
               --generate-notes
+          fi
+
+          tag_object_type="$(gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" --jq .object.type)"
+          tag_object_sha="$(gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" --jq .object.sha)"
+          if [[ "$tag_object_type" == "tag" ]]; then
+            tag_object_type="$(gh api "repos/$GH_REPO/git/tags/$tag_object_sha" --jq .object.type)"
+            tag_object_sha="$(gh api "repos/$GH_REPO/git/tags/$tag_object_sha" --jq .object.sha)"
+          fi
+          if [[ "$tag_object_type" != "commit" || "$tag_object_sha" != "$GITHUB_SHA" ]]; then
+            echo "Release tag does not resolve to $GITHUB_SHA" >&2
+            exit 1
+          fi
+
+          mapfile -t release_assets < <(
+            gh release view "$RELEASE_TAG" --json assets \
+              --jq '.assets[].name | select(startswith("RT-AX86U_"))'
+          )
+          if (( ${#release_assets[@]} != 2 )) || \
+             [[ ! " ${release_assets[*]} " =~ " $archive_name " ]] || \
+             [[ ! " ${release_assets[*]} " =~ " $archive_name.sha256 " ]]; then
+            echo "Release contains stale or missing RT-AX86U assets" >&2
+            printf 'Asset: %s\n' "${release_assets[@]}" >&2
+            exit 1
           fi
