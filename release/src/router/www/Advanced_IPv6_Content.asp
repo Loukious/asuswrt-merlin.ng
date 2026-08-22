@@ -103,12 +103,8 @@ function initial(){
 	}	
 	else{
 		genWANSoption();
-		if(mtwancfg_support)
-			document.getElementById("wan_sel_tr").style.display = "";
-	}
-
-	if(based_modelid == "BRT-AC828")
 		document.getElementById("wan_sel_tr").style.display = "";
+	}
 }
 
 function showInputfield(v){
@@ -1087,6 +1083,11 @@ function genWANSoption(){
 				document.form.wan_selection.options[i] = new Option("2.5G WAN", i);
 			else if (wans_dualwan_NAME == "LAN Port 5")
 				document.form.wan_selection.options[i] = new Option("2.5G LAN", i);
+		} else if (based_modelid == "RT-AX86U") {
+			if (wans_dualwan_NAME == "WAN")
+				document.form.wan_selection.options[i] = new Option("1G WAN (WAN)", i);
+			else if (wans_dualwan_NAME == "LAN Port 5")
+				document.form.wan_selection.options[i] = new Option("2.5G WAN (LAN5)", i);
 		}
 	}
 
