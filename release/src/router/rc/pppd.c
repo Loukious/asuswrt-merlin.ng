@@ -69,6 +69,54 @@ char *ppp_safe_escape(char *src, char *buf, size_t size)
 	return ppp_escape(src, buf, size) ? : "";
 }
 
+static void randomize_pppoe_hwaddr(const char *ifname)
+{
+	int sfd, up = 0;
+	struct ifreq ifr;
+	unsigned char ea[6];
+	char eabuf[18];
+
+	if (ifname == NULL || *ifname == '\0')
+		return;
+
+	if ((sfd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) < 0)
+		return;
+
+	memset(&ifr, 0, sizeof(ifr));
+	strlcpy(ifr.ifr_name, ifname, IFNAMSIZ);
+
+	if (ioctl(sfd, SIOCGIFFLAGS, &ifr) == 0) {
+		if ((up = ifr.ifr_flags & IFF_UP) != 0) {
+			ifr.ifr_flags &= ~IFF_UP;
+			ioctl(sfd, SIOCSIFFLAGS, &ifr);
+		}
+	}
+
+	if (f_read("/dev/urandom", ea, sizeof(ea)) != (int)sizeof(ea))
+		goto restore_ifstate;
+
+	/* Force unicast + locally administered MAC. */
+	ea[0] &= 0xFE;
+	ea[0] |= 0x02;
+
+	memcpy(ifr.ifr_hwaddr.sa_data, ea, sizeof(ea));
+	ifr.ifr_hwaddr.sa_family = ARPHRD_ETHER;
+
+	if (ioctl(sfd, SIOCSIFHWADDR, &ifr) == 0) {
+		snprintf(eabuf, sizeof(eabuf), "%02X:%02X:%02X:%02X:%02X:%02X",
+			 ea[0], ea[1], ea[2], ea[3], ea[4], ea[5]);
+		logmessage("pppd", "Randomized WAN MAC on %s to %s", ifname, eabuf);
+	}
+
+restore_ifstate:
+	if (up && ioctl(sfd, SIOCGIFFLAGS, &ifr) == 0) {
+		ifr.ifr_flags |= IFF_UP | IFF_RUNNING;
+		ioctl(sfd, SIOCSIFFLAGS, &ifr);
+	}
+
+	close(sfd);
+}
+
 int
 start_pppd(int unit)
 {
@@ -188,6 +236,9 @@ start_pppd(int unit)
 			fprintf(fp, "host-uniq %s\n",
 				nvram_safe_get(strcat_r(prefix, "pppoe_hostuniq", tmp)));
 		}
+
+		if (nvram_get_int(strcat_r(prefix, "pppoe_randmac", tmp)))
+			fprintf(fp, "rp_pppoe_randmac\n");
 #ifdef RTCONFIG_DSL
 #ifdef RTCONFIG_DSL_REMOTE
 		if (nvram_match("dslx_transmode", "atm")
@@ -341,6 +392,12 @@ start_pppd(int unit)
 #if defined(RTCONFIG_SOC_IPQ8074)
 	sleep(2);
 #endif
+
+	if ((nvram_match(strcat_r(prefix, "proto", tmp), "pppoe")
+	  || nvram_match(strcat_r(prefix, "proto", tmp), "pptp")
+	  || nvram_match(strcat_r(prefix, "proto", tmp), "l2tp"))
+	 && nvram_get_int(strcat_r(prefix, "pppoe_randmac", tmp)))
+		randomize_pppoe_hwaddr(nvram_safe_get(strcat_r(prefix, "ifname", tmp)));
 
 	if (nvram_match(strcat_r(prefix, "proto", tmp), "l2tp"))
 	{
