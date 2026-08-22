@@ -2629,6 +2629,10 @@ config RTCONFIG_ASD
 	bool "RTCONFIG_ASD support"
 	default n
 
+config RTCONFIG_ASD_2_1
+	bool "RTCONFIG_ASD_2_1 support"
+	default n
+
 config RTCONFIG_LIVE_UPDATE_RSA
 	bool "RTCONFIG_LIVE_UPDATE_RSA support"
 	default n

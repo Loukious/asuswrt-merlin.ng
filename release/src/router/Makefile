@@ -1142,9 +1142,15 @@ obj-$(RTCONFIG_AHS) += curl
 obj-$(RTCONFIG_AHS) += json-c
 obj-$(RTCONFIG_AHS) += ahs
 
-obj-$(RTCONFIG_ASD) += asd
-obj-$(RTCONFIG_ASD) += onig-6.9.9
-obj-$(RTCONFIG_ASD) += jq-1.7.1
+ifeq ($(RTCONFIG_ASD_2_1),y)
+obj-y += asd2.1
+obj-y += onig-6.9.9
+obj-y += jq-1.7.1
+else ifeq ($(RTCONFIG_ASD),y)
+obj-y += asd
+obj-y += onig-6.9.9
+obj-y += jq-1.7.1
+endif
 
 obj-$(RTCONFIG_OPENVPN) += libovpn
 
@@ -9834,6 +9840,18 @@ asd-install:
 asd-clean:
 	$(MAKE) -C asd clean
 
+asd2.1: shared $(if $(BCM_502L07P2),ethctl_lib) nvram$(BCMEX)$(EX7) curl openssl libasc
+	$(MAKE) -C $@
+
+asd2.1-install:
+	install -D asd2.1/asd $(INSTALLDIR)/asd2.1/usr/bin/asd
+	install -D asd2.1/libasd.so $(INSTALLDIR)/asd2.1/usr/lib/libasd.so
+	$(if $(RTCONFIG_DEBUG),,$(STRIP) $(INSTALLDIR)/asd2.1/usr/bin/asd)
+	$(if $(RTCONFIG_DEBUG),,$(STRIP) $(INSTALLDIR)/asd2.1/usr/lib/libasd.so)
+
+asd2.1-clean:
+	$(MAKE) -C asd2.1 clean
+
 onig-6.9.9:
 	cd onig-6.9.9 && \
 	autoreconf -i -f && \
@@ -11645,4 +11663,3 @@ $(obj-y) $(obj-n) $(obj-clean) $(obj-install): dummy
 .PHONY: all clean distclean mrproper install package image
 .PHONY: conf mconf oldconf kconf kmconf config menuconfig oldconfig
 .PHONY: dummy libnet libpcap
-
