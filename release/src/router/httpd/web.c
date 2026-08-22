@@ -119,7 +119,9 @@ typedef unsigned long long u64;
 #include <net/if.h>
 #include <linux/sockios.h>
 #include <version.h>
+#define NMP_COMPAT_STRUCT 1
 #include <networkmap.h> //2011.03 Yau add for new networkmap 2017.03 Rawny add
+
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/sysinfo.h>
@@ -2140,7 +2142,7 @@ ej_get_all_basic_clientlist(int eid, webs_t wp, int argc, char_t **argv)
 	struct json_object *customList = NULL, *custom_attr_get = NULL, *custom_client_name = NULL;
 	int customList_status = 0;
 
-	if(!pids("networkmap") || (clients = json_object_from_file(NMP_CL_JSON_FILE)) == NULL){
+	if((clients = json_object_from_file(NMP_CL_JSON_FILE)) == NULL){
 		ret = websWrite(wp, "[]");
 		return 0;
 	}
@@ -10108,10 +10110,84 @@ static int get_client_bind_info(char *client_mac, char *node_mac, int node_mac_s
 
 //2016.09 Rawny add for new networkmap
 //static int get_client_detail_info(int eid, webs_t wp, int argc, char_t **argv, key_t shmkey, char *maclist_buf){
+#define LEGACY_CLIENT_DETAIL_INFO_TABLE_SIZE      0x2ab74
+#define LEGACY_CLIENT_IP_MAC_NUM_OFFSET           0x2ab54
+#define LEGACY_CLIENT_DELETE_MAC_OFFSET           0x2ab64
+
+static int
+networkmap_shmget_compat(key_t shmkey)
+{
+	int shmid;
+
+	shmid = shmget((key_t)shmkey, sizeof(CLIENT_DETAIL_INFO_TABLE), 0666|IPC_CREAT);
+	if (shmid == -1) {
+		/* Existing networkmap segment can be smaller than httpd's struct. */
+		shmid = shmget((key_t)shmkey, 0, 0666);
+	}
+
+	return shmid;
+}
+
+static size_t
+networkmap_shm_segment_size(int shmid)
+{
+	struct shmid_ds shm_ds;
+
+	memset(&shm_ds, 0, sizeof(shm_ds));
+	if (shmctl(shmid, IPC_STAT, &shm_ds) == -1)
+		return 0;
+
+	return (size_t)shm_ds.shm_segsz;
+}
+
+static int
+networkmap_ip_mac_num(void *shared_client_info, size_t shm_size, P_CLIENT_DETAIL_INFO_TABLE p_client_info_tab)
+{
+	int ip_mac_num = p_client_info_tab->ip_mac_num;
+
+	/* Legacy prebuilt networkmap stores ip_mac_num at fixed offset 0x2ab54. */
+	if ((shm_size == LEGACY_CLIENT_DETAIL_INFO_TABLE_SIZE || shm_size < sizeof(CLIENT_DETAIL_INFO_TABLE)) &&
+	    shm_size >= (LEGACY_CLIENT_IP_MAC_NUM_OFFSET + sizeof(int))) {
+		int legacy_ip_mac_num = 0;
+		memcpy(&legacy_ip_mac_num, (char *)shared_client_info + LEGACY_CLIENT_IP_MAC_NUM_OFFSET, sizeof(legacy_ip_mac_num));
+		if (legacy_ip_mac_num >= 0 && legacy_ip_mac_num <= MAX_NR_CLIENT_LIST)
+			ip_mac_num = legacy_ip_mac_num;
+	}
+
+	if (ip_mac_num < 0)
+		ip_mac_num = 0;
+	else if (ip_mac_num > MAX_NR_CLIENT_LIST)
+		ip_mac_num = MAX_NR_CLIENT_LIST;
+
+	return ip_mac_num;
+}
+
+static char *
+networkmap_delete_mac_ptr(void *shared_client_info, size_t shm_size, P_CLIENT_DETAIL_INFO_TABLE p_client_info_tab, size_t *buf_len)
+{
+	char *delete_mac = p_client_info_tab->delete_mac;
+	size_t delete_mac_len = sizeof(p_client_info_tab->delete_mac);
+
+	if ((shm_size == LEGACY_CLIENT_DETAIL_INFO_TABLE_SIZE || shm_size < sizeof(CLIENT_DETAIL_INFO_TABLE)) &&
+	    shm_size > LEGACY_CLIENT_DELETE_MAC_OFFSET) {
+		delete_mac = (char *)shared_client_info + LEGACY_CLIENT_DELETE_MAC_OFFSET;
+		delete_mac_len = shm_size - LEGACY_CLIENT_DELETE_MAC_OFFSET;
+		if (delete_mac_len > 16)
+			delete_mac_len = 16;
+	}
+
+	if (buf_len)
+		*buf_len = delete_mac_len;
+
+	return delete_mac;
+}
+
 static int get_client_detail_info(struct json_object *clients, struct json_object *macArray, key_t shmkey){
 	CLIENT_DPRINTF("get_client_detail_info start\n");
 	int i, shm_client_info_id;
+	int ip_mac_num = 0;
 	void *shared_client_info = (void *) 0;
+	size_t shm_size = 0;
 	char mac_buf[32], dev_name[32];
 	char type[8], online[8], defaultType[8], macRepeat[8], opMode[8], rssi[8], wtfast[8], internetState[8], wireless[8];
 	char ipaddr[16];
@@ -10134,6 +10210,7 @@ static int get_client_detail_info(struct json_object *clients, struct json_objec
 #endif
 #if defined(RTCONFIG_AMAS) || defined(RTCONFIG_WIFI_SON)
 	struct json_object *amasList = NULL, *amasReClientDetailList = NULL;
+	struct json_object *allClientList = NULL;
 	int amasList_status = 0, amasReClientDetailList_status = 0;
 	struct json_object *amasPAP_attr_get = NULL;
 #ifdef RTCONFIG_STA_AP_BAND_BIND
@@ -10177,18 +10254,35 @@ static int get_client_detail_info(struct json_object *clients, struct json_objec
 	//get amas re client detail info
 	amasReClientDetailList = json_object_new_object();
 	amasReClientDetailList_status = get_amas_re_client_detail_info(amasReClientDetailList);
+
+	/* Build reverse lookup: clientMAC -> papMAC from amasReClientDetailList.
+	   Needed when NMP_COMPAT_STRUCT excludes pap_mac from networkmap SHM struct. */
+	allClientList = json_object_new_object();
+	if (amasReClientDetailList_status) {
+		json_object_object_foreach(amasReClientDetailList, rcl_key, rcl_val) {
+			struct json_object *rcl_papMac = NULL;
+			if (json_object_object_get_ex(rcl_val, "papMac", &rcl_papMac)) {
+				char rcl_clientMac[18] = {0};
+				strlcpy(rcl_clientMac, rcl_key, sizeof(rcl_clientMac));
+				if (!json_object_object_get_ex(allClientList, rcl_clientMac, NULL))
+					json_object_object_add(allClientList, rcl_clientMac,
+						json_object_new_string(json_object_get_string(rcl_papMac)));
+			}
+		}
+	}
 #endif
 
 	// set check wireless offline
 	nvram_set("nmp_wl_offline_check", "1");
 
 	lock = file_lock("networkmap");
-	shm_client_info_id = shmget((key_t)shmkey, sizeof(CLIENT_DETAIL_INFO_TABLE), 0666|IPC_CREAT);
+	shm_client_info_id = networkmap_shmget_compat(shmkey);
 	if (shm_client_info_id == -1){
 		fprintf(stderr,"shmget failed\n");
 		file_unlock(lock);
 		return 0;
 	}
+	shm_size = networkmap_shm_segment_size(shm_client_info_id);
 
 	shared_client_info = shmat(shm_client_info_id, (void *) 0,0);
 	if (shared_client_info == (void *)-1){
@@ -10207,7 +10301,8 @@ static int get_client_detail_info(struct json_object *clients, struct json_objec
 
 
 	p_client_info_tab = (P_CLIENT_DETAIL_INFO_TABLE)shared_client_info;
-	for(i = 0; i < p_client_info_tab->ip_mac_num; i++) {
+	ip_mac_num = networkmap_ip_mac_num(shared_client_info, shm_size, p_client_info_tab);
+	for(i = 0; i < ip_mac_num; i++) {
 		memset(dev_name, 0, sizeof(dev_name));
 		memset(ipaddr, 0, sizeof(ipaddr));
 #ifdef RTCONFIG_IPV6
@@ -10254,8 +10349,13 @@ static int get_client_detail_info(struct json_object *clients, struct json_objec
 			snprintf(ipaddr, sizeof(ipaddr), "%d.%d.%d.%d", p_client_info_tab->ip_addr[i][0],p_client_info_tab->ip_addr[i][1],
 			p_client_info_tab->ip_addr[i][2],p_client_info_tab->ip_addr[i][3]);
 #ifdef RTCONFIG_IPV6
+#ifndef NMP_COMPAT_STRUCT
 			snprintf(ip6addr, sizeof(ip6addr), "%s", p_client_info_tab->ip6_addr[i]);
 			snprintf(ip6_prefix, sizeof(ip6_prefix), "%s", p_client_info_tab->ip6_prefix[i]);
+#else
+			snprintf(ip6addr, sizeof(ip6addr), "%s", "");
+			snprintf(ip6_prefix, sizeof(ip6_prefix), "%s", "");
+#endif
 #endif
 			snprintf(mac_buf, sizeof(mac_buf), "%02X:%02X:%02X:%02X:%02X:%02X",
 			p_client_info_tab->mac_addr[i][0],p_client_info_tab->mac_addr[i][1],
@@ -10317,7 +10417,11 @@ static int get_client_detail_info(struct json_object *clients, struct json_objec
 			json_object_object_add(client, "dpiDevice", json_object_new_string((const char *) p_client_info_tab->apple_model[i]));
 			json_object_object_add(client, "vendor", json_object_new_string((const char *) p_client_info_tab->vendor_name[i]));
 			json_object_object_add(client, "isWL", json_object_new_string(wireless));
+#ifndef NMP_COMPAT_STRUCT
 			json_object_object_add(client, "isGN", json_object_new_string(p_client_info_tab->guest_network[i]));
+#else
+			json_object_object_add(client, "isGN", json_object_new_string(""));
+#endif
 #ifndef RTCONFIG_AMAS
  			json_object_object_add(client, "isOnline", json_object_new_string("1"));
 			json_object_array_add(macArray, json_object_new_string(mac_buf));
@@ -10500,13 +10604,28 @@ static int get_client_detail_info(struct json_object *clients, struct json_objec
 				}
 				CLIENT_DPRINTF("amasList finish\n");
 			}
-
+#ifndef NMP_COMPAT_STRUCT
 			if(isMAC(p_client_info_tab->pap_mac[i]))  {
 				json_object_object_add(client, "amesh_isReClient", json_object_new_string("1"));
 				json_object_object_add(client, "amesh_papMac", json_object_new_string(p_client_info_tab->pap_mac[i]));
 				CLIENT_DPRINTF("check amesh_isReClient finish\n");
 			}
-
+#else
+			/* pap_mac not in compat struct; resolve papMac from cfg_server clientlist */
+			{
+				struct json_object *resolved_papMac = NULL;
+				if (json_object_object_get_ex(allClientList, mac_buf, &resolved_papMac)) {
+					json_object_object_add(client, "amesh_isReClient", json_object_new_string("1"));
+					json_object_object_add(client, "amesh_papMac", json_object_new_string(json_object_get_string(resolved_papMac)));
+				}
+				else if (strcmp(wireless, "0") != 0) {
+					/* Wireless client not yet in cfgsync clientlist - default to CAP MAC */
+					json_object_object_add(client, "amesh_isReClient", json_object_new_string("1"));
+					json_object_object_add(client, "amesh_papMac", json_object_new_string(""));
+				}
+				CLIENT_DPRINTF("check amesh_isReClient (compat) finish\n");
+			}
+#endif
 			if(amasReClientDetailList_status) {
 				struct json_object *amas_re_get_isWL = NULL, *amas_re_get_amesh_papMac = NULL;
 				json_object_object_get_ex(client, "isWL", &amas_re_get_isWL);
@@ -10580,6 +10699,8 @@ static int get_client_detail_info(struct json_object *clients, struct json_objec
 		json_object_put(amasList);
 	if(amasReClientDetailList)
 		json_object_put(amasReClientDetailList);
+	if(allClientList)
+		json_object_put(allClientList);
 #endif
 	if(custom_attr_get)
 		json_object_put(custom_attr_get);
@@ -10617,8 +10738,16 @@ static int ej_get_clientlist(int eid, webs_t wp, int argc, char_t **argv)
 	}
 	
 	if(!pids("networkmap")){
-		websWrite(wp, "{\"maclist\": [], \"ClientAPILevel\":\"%s\"}", CLIENTAPILEVEL);
-		return 0;
+		/* networkmap not running - try cache file first, then fall through
+		   to read shared memory which may still contain valid data */
+		if(check_if_file_exist(NMP_CACHE_FILE)){
+			clients = json_object_from_file(NMP_CACHE_FILE);
+			if(clients){
+				websWrite(wp, "%s", json_object_to_json_string(clients));
+				json_object_put(clients);
+				return 0;
+			}
+		}
 	}
 
 	clients = json_object_new_object();
@@ -19260,6 +19389,8 @@ deleteOfflineClient(webs_t wp, char_t *urlPrefix, char_t *webDir, int arg, char_
 	int i, shm_client_info_id;
 	void *shared_client_info=(void *) 0;
 	P_CLIENT_DETAIL_INFO_TABLE p_client_info_tab;
+	size_t shm_size = 0, delete_mac_buf_len = 0;
+	char *delete_mac = NULL;
 	int lock;
 
 	i = 0;
@@ -19282,13 +19413,14 @@ deleteOfflineClient(webs_t wp, char_t *urlPrefix, char_t *webDir, int arg, char_
 	mac_str[i] = '\0';
 
 	lock = file_lock("networkmap");
-	shm_client_info_id = shmget((key_t)SHMKEY_LAN, sizeof(CLIENT_DETAIL_INFO_TABLE), 0666|IPC_CREAT);
+	shm_client_info_id = networkmap_shmget_compat(SHMKEY_LAN);
 	if (shm_client_info_id == -1){
 		fprintf(stderr,"shmget failed\n");
 		file_unlock(lock);
 		ret = HTTP_SHMGET_FAIL;
 		goto FINISH;
 	}
+	shm_size = networkmap_shm_segment_size(shm_client_info_id);
 
 	shared_client_info = shmat(shm_client_info_id,(void *) 0,0);
 	if (shared_client_info == (void *)-1){
@@ -19299,7 +19431,9 @@ deleteOfflineClient(webs_t wp, char_t *urlPrefix, char_t *webDir, int arg, char_
 	}
 
 	p_client_info_tab = (P_CLIENT_DETAIL_INFO_TABLE)shared_client_info;
-	strlcpy(p_client_info_tab->delete_mac, mac_str, sizeof(p_client_info_tab->delete_mac));
+	delete_mac = networkmap_delete_mac_ptr(shared_client_info, shm_size, p_client_info_tab, &delete_mac_buf_len);
+	if (delete_mac != NULL && delete_mac_buf_len > 0)
+		strlcpy(delete_mac, mac_str, delete_mac_buf_len);
 	shmdt(shared_client_info);
 	file_unlock(lock);
 
@@ -24540,14 +24674,17 @@ do_del_client_data_cgi(char *url, FILE *stream) {
 		trim_colon(mac_str);
 		void *shared_client_info=(void *) 0;
 		P_CLIENT_DETAIL_INFO_TABLE p_client_info_tab;
+		size_t shm_size = 0, delete_mac_buf_len = 0;
+		char *delete_mac = NULL;
 		lock = file_lock("networkmap");
-		shm_client_info_id = shmget((key_t)SHMKEY_LAN, sizeof(CLIENT_DETAIL_INFO_TABLE), 0666|IPC_CREAT);
+		shm_client_info_id = networkmap_shmget_compat(SHMKEY_LAN);
 		if (shm_client_info_id == -1){
 			fprintf(stderr,"shmget failed 0\n");
 			file_unlock(lock);
 			ret = HTTP_SHMGET_FAIL;
 			goto FINISH;
 		}
+		shm_size = networkmap_shm_segment_size(shm_client_info_id);
 
 		shared_client_info = shmat(shm_client_info_id,(void *) 0,0);
 		if (shared_client_info == (void *)-1){
@@ -24558,7 +24695,9 @@ do_del_client_data_cgi(char *url, FILE *stream) {
 		}
 
 		p_client_info_tab = (P_CLIENT_DETAIL_INFO_TABLE)shared_client_info;
-		strlcpy(p_client_info_tab->delete_mac, mac_str, sizeof(p_client_info_tab->delete_mac));
+		delete_mac = networkmap_delete_mac_ptr(shared_client_info, shm_size, p_client_info_tab, &delete_mac_buf_len);
+		if (delete_mac != NULL && delete_mac_buf_len > 0)
+			strlcpy(delete_mac, mac_str, delete_mac_buf_len);
 		shmdt(shared_client_info);
 		file_unlock(lock);
 
@@ -36210,8 +36349,8 @@ ej_get_cfg_clientlist(int eid, webs_t wp, int argc, char **argv){
 	char rssi2g_buf[8], rssi5g_buf[8], rssi6g_buf[8];
 	char model_name_buf[33] = {0}, product_id_buf[33] = {0}, frs_model_name_buf[33] = {0};
 	char ui_model_name_buf[128] = {0};
-	char fwver_buf[65] = {0};
-	char newfwver_buf[65] = {0};
+	char fwver_buf[33] = {0};
+	char newfwver_buf[33] = {0};
 	char re_mac_file_name[32] = {0};
 	char alias_conv_buf[65];
 	int first_info = 1;
@@ -36252,6 +36391,7 @@ ej_get_cfg_clientlist(int eid, webs_t wp, int argc, char **argv){
 	shm_client_tbl_id = shmget((key_t)KEY_SHM_CFG, sizeof(CM_CLIENT_TABLE), 0666|IPC_CREAT);
 	if (shm_client_tbl_id == -1){
 		fprintf(stderr, "shmget failed\n");
+		websWrite(wp, "[]");
 		file_unlock(lock);
 		return 0;
 	}
@@ -36259,6 +36399,7 @@ ej_get_cfg_clientlist(int eid, webs_t wp, int argc, char **argv){
 	shared_client_info = shmat(shm_client_tbl_id,(void *) 0,0);
 	if (shared_client_info == (void *)-1){
 		fprintf(stderr, "shmat failed\n");
+		websWrite(wp, "[]");
 		file_unlock(lock);
 		return 0;
 	}
@@ -36688,31 +36829,8 @@ ej_get_cfg_clientlist(int eid, webs_t wp, int argc, char **argv){
 			json_object_put(bandInfoObj);
 		}
 
-		/* get bssid for iot fronthaul */
-		snprintf(ap2g_iot_fh_buf, sizeof(ap2g_iot_fh_buf), "%02X:%02X:%02X:%02X:%02X:%02X",
-			p_client_tbl->ap2g_iot_fh[i][0], p_client_tbl->ap2g_iot_fh[i][1],
-			p_client_tbl->ap2g_iot_fh[i][2], p_client_tbl->ap2g_iot_fh[i][3],
-			p_client_tbl->ap2g_iot_fh[i][4], p_client_tbl->ap2g_iot_fh[i][5]);
-
-		snprintf(ap5g_iot_fh_buf, sizeof(ap5g_iot_fh_buf), "%02X:%02X:%02X:%02X:%02X:%02X",
-			p_client_tbl->ap5g_iot_fh[i][0], p_client_tbl->ap5g_iot_fh[i][1],
-			p_client_tbl->ap5g_iot_fh[i][2], p_client_tbl->ap5g_iot_fh[i][3],
-			p_client_tbl->ap5g_iot_fh[i][4], p_client_tbl->ap5g_iot_fh[i][5]);
-
-		snprintf(ap5g1_iot_fh_buf, sizeof(ap5g1_iot_fh_buf), "%02X:%02X:%02X:%02X:%02X:%02X",
-			p_client_tbl->ap5g1_iot_fh[i][0], p_client_tbl->ap5g1_iot_fh[i][1],
-			p_client_tbl->ap5g1_iot_fh[i][2], p_client_tbl->ap5g1_iot_fh[i][3],
-			p_client_tbl->ap5g1_iot_fh[i][4], p_client_tbl->ap5g1_iot_fh[i][5]);
-
-		snprintf(ap6g_iot_fh_buf, sizeof(ap6g_iot_fh_buf), "%02X:%02X:%02X:%02X:%02X:%02X",
-			p_client_tbl->ap6g_iot_fh[i][0], p_client_tbl->ap6g_iot_fh[i][1],
-			p_client_tbl->ap6g_iot_fh[i][2], p_client_tbl->ap6g_iot_fh[i][3],
-			p_client_tbl->ap6g_iot_fh[i][4], p_client_tbl->ap6g_iot_fh[i][5]);
-
-		snprintf(ap6g1_iot_fh_buf, sizeof(ap6g1_iot_fh_buf), "%02X:%02X:%02X:%02X:%02X:%02X",
-			p_client_tbl->ap6g1_iot_fh[i][0], p_client_tbl->ap6g1_iot_fh[i][1],
-			p_client_tbl->ap6g1_iot_fh[i][2], p_client_tbl->ap6g1_iot_fh[i][3],
-			p_client_tbl->ap6g1_iot_fh[i][4], p_client_tbl->ap6g1_iot_fh[i][5]);
+		/* iot fronthaul fields not present in prebuilt cfg_server struct;
+		   bufs are already zeroed so websWrite will output empty strings */
 
 		websWrite(wp, "{");
 		websWrite(wp, "\"alias\":\"%s\",", strlen(alias_conv_buf) ? alias_conv_buf : rmac_buf);
@@ -42083,7 +42201,13 @@ static int get_clientlist_ex(struct json_object **clients)
 	}
 
 	if(!pids("networkmap")){
-		return 0;
+		/* networkmap not running - try cache file first, then fall through
+		   to read shared memory which may still contain valid data */
+		if(check_if_file_exist(NMP_CACHE_FILE)){
+			*clients = json_object_from_file(NMP_CACHE_FILE);
+			if(*clients)
+				return 0;
+		}
 	}
 
 	*clients = json_object_new_object();

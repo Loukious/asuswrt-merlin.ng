@@ -2106,7 +2106,24 @@ int wl_set_mcsindex(char *ifname, int *is_auto, int *idx, char *idx_type, int *s
 }
 #endif
 
-void retrieve_static_maclist_from_nvram(int idx,int vidx,struct maclist *maclist,int maclist_buf_size)
+/**
+ * Compatibility shim: prebuilt bsd and roamast-broadcom.o were compiled
+ * against the old 3-arg signature (before the vidx parameter was added in
+ * GPL 3006.102_37346).  On ARM EAPCS the mismatched call shifts maclist
+ * into the vidx slot and maclist_buf_size into the maclist slot, causing
+ * the function to dereference 0x1000 as a pointer -> SIGSEGV.
+ *
+ * Since there are no source-code callers of this symbol (only prebuilts),
+ * we export the old 3-arg ABI and keep the real implementation static.
+ */
+static void _retrieve_static_maclist_from_nvram(int idx, int vidx, struct maclist *maclist, int maclist_buf_size);
+
+void retrieve_static_maclist_from_nvram(int idx, struct maclist *maclist, int maclist_buf_size)
+{
+	_retrieve_static_maclist_from_nvram(idx, 0, maclist, maclist_buf_size);
+}
+
+static void _retrieve_static_maclist_from_nvram(int idx, int vidx, struct maclist *maclist, int maclist_buf_size)
 {
 	char prefix[16]={0};
 	struct ether_addr *ea;

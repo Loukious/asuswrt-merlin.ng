@@ -13,7 +13,7 @@
 #define ALIAS_LEN			33
 #define IP_LEN				4
 #define MAC_LEN				6
-#define FWVER_LEN			65
+#define FWVER_LEN			33
 #define MODEL_NAME_LEN		33
 #define TERRITORY_CODE_LEN	33
 #define RE_LIST_JSON_FILE	"/tmp/relist.json"
@@ -22,7 +22,9 @@
 #else
 #define MAX_RELIST_COUNT	MAX_RELIST_NUM
 #endif
-#define CFG_CLIENT_NUM		(MAX_RELIST_COUNT + 1)
+/* CFG_CLIENT_NUM must match the prebuilt cfg_server binary layout.
+   The prebuilt was compiled with MAX_RELIST_NUM (9), not RTCONFIG_MAX_RE. */
+#define CFG_CLIENT_NUM		(MAX_RELIST_NUM + 1)
 #define SSID_LEN				33
 #define LLDP_STAT_LEN       128
 #define RE_LIST_MAX_LEN		(MAX_RELIST_COUNT * 128)
@@ -67,11 +69,6 @@ typedef struct _CM_CLIENT_TABLE {
 	unsigned char ap5g1_fh[CFG_CLIENT_NUM][MAC_LEN];
 	unsigned char ap6g_fh[CFG_CLIENT_NUM][MAC_LEN];
 	unsigned char ap6g1_fh[CFG_CLIENT_NUM][MAC_LEN];
-	unsigned char ap2g_iot_fh[CFG_CLIENT_NUM][MAC_LEN];
-	unsigned char ap5g_iot_fh[CFG_CLIENT_NUM][MAC_LEN];
-	unsigned char ap5g1_iot_fh[CFG_CLIENT_NUM][MAC_LEN];
-	unsigned char ap6g_iot_fh[CFG_CLIENT_NUM][MAC_LEN];
-	unsigned char ap6g1_iot_fh[CFG_CLIENT_NUM][MAC_LEN];
 	char ap2g_ssid[CFG_CLIENT_NUM][SSID_LEN];
 	char ap5g_ssid[CFG_CLIENT_NUM][SSID_LEN];
 	char ap5g1_ssid[CFG_CLIENT_NUM][SSID_LEN];
@@ -103,7 +100,6 @@ typedef struct _CM_CLIENT_TABLE {
 	unsigned int joinTime[CFG_CLIENT_NUM];
 #endif
 	int cost[CFG_CLIENT_NUM];
-	int dwb_band[CFG_CLIENT_NUM];
 } CM_CLIENT_TABLE, *P_CM_CLIENT_TABLE;
 
 extern int cm_checkReListExist(char *Mac);
