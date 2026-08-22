@@ -206,18 +206,23 @@ function drawClientList(tab){
 			clientHtmlTd += '</td></tr><tr><td style="height:20px;">';
 		}
 
-        const truncateString = (str, maxLength) => {
-          if (str.length <= maxLength + 3) {
-            return str;
-          } else {
-            return str.substring(0, maxLength) + '...';
-          }
-        }
+	        const truncateString = (str, maxLength) => {
+	          const value = (typeof str == "string") ? str : "";
+	          if (value.length <= maxLength + 3) {
+	            return value;
+	          } else {
+	            return value.substring(0, maxLength) + '...';
+	          }
+	        }
 
-        const clientIpCode = (clientObj.ip != "0.0.0.0") ? `<div title="${clientObj.ip}">${clientObj.ip}</div>` : `<div title="${clientObj.ip6}">${truncateString(clientObj.ip6,17)}</div>`;
-        const clientIpLinkCode = (clientObj.ip != "0.0.0.0") ? `${clientObj.ip}` : `[${clientObj.ip6}]`;
+	        const hasIpv4 = (clientObj.ip != "" && clientObj.ip != "0.0.0.0" && clientObj.ip != "offline");
+	        const hasIpv6 = (typeof clientObj.ip6 == "string" && clientObj.ip6 != "");
+	        const clientIpDisplay = hasIpv4 ? clientObj.ip : (hasIpv6 ? truncateString(clientObj.ip6, 17) : "-");
+	        const clientIpTitle = hasIpv4 ? clientObj.ip : (hasIpv6 ? clientObj.ip6 : "Unavailable");
+	        const clientIpCode = `<div title="${clientIpTitle}">${clientIpDisplay}</div>`;
+	        const clientIpLinkCode = hasIpv4 ? `${clientObj.ip}` : (hasIpv6 ? `[${clientObj.ip6}]` : "");
 
-		clientHtmlTd += (clientObj.isWebServer) ? `<a class="link" href="http://${clientIpLinkCode}" target="_blank">${clientIpCode}}</a>` : `${clientIpCode}`;
+			clientHtmlTd += (clientObj.isWebServer && clientIpLinkCode != "") ? `<a class="link" href="http://${clientIpLinkCode}" target="_blank">${clientIpCode}</a>` : `${clientIpCode}`;
 
 		clientHtmlTd += '</td><td>';
 		var rssi_t = 0;
