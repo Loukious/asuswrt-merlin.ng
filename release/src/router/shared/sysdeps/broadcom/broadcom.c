@@ -204,9 +204,10 @@ char *get_pap_bssid(int unit, char bssid_str[])
 
 sta_info_t *wl_sta_info(char *ifname, struct ether_addr *ea)
 {
-	static char buf[sizeof(sta_info_t)];
+	static char buf[512];
 	sta_info_t *sta = NULL;
 
+	memset(buf, 0, sizeof(buf));
 	strcpy(buf, "sta_info");
 	memcpy(buf + strlen(buf) + 1, (void *)ea, ETHER_ADDR_LEN);
 
@@ -2106,6 +2107,17 @@ int wl_set_mcsindex(char *ifname, int *is_auto, int *idx, char *idx_type, int *s
 }
 #endif
 
+/*
+ * ABI note: this symbol has no source-code callers - it exists purely for the
+ * prebuilt bsd and rc/prebuild roamast-broadcom.o objects.  Every prebuilt in
+ * this tree calls it with FOUR arguments (idx, vidx, maclist, maclist_buf_size);
+ * verified by disassembly for RT-AX86U and RT-AX86U_PRO.  vidx was only briefly
+ * absent (GPL 3006.102.33921) and is back in 3006.102_37526.
+ *
+ * Do not "simplify" this to a 3-arg export: roamast then passes its vidx in the
+ * maclist slot, so the "maclist->count = 0" below stores through 0x1 and
+ * SIGSEGVs on the first rast_watchdog tick.
+ */
 void retrieve_static_maclist_from_nvram(int idx,int vidx,struct maclist *maclist,int maclist_buf_size)
 {
 	char prefix[16]={0};

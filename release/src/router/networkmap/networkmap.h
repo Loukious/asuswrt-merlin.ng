@@ -231,14 +231,18 @@ typedef struct {
 	unsigned char	device_type[MAX_NR_CLIENT_LIST][32];
 	unsigned char	vendorClass[MAX_NR_CLIENT_LIST][32];
 	unsigned char	os_type[MAX_NR_CLIENT_LIST];
-#ifdef RTCONFIG_IPV6
+#if defined(RTCONFIG_IPV6)
 	char			ip6_addr[MAX_NR_CLIENT_LIST][40];
 	char			ip6_prefix[MAX_NR_CLIENT_LIST][50];
 #endif
 #ifdef RTCONFIG_MULTILAN_CFG
 	unsigned char	sdn_idx[MAX_NR_CLIENT_LIST];
+#ifndef NMP_COMPAT_STRUCT
 	unsigned char	sdn_type[MAX_NR_CLIENT_LIST][32];
 	unsigned char	vlan_id[MAX_NR_CLIENT_LIST];
+#endif
+#elif defined(NMP_COMPAT_STRUCT)
+	unsigned char	sdn_idx[MAX_NR_CLIENT_LIST];
 #endif
 	unsigned char	online[MAX_NR_CLIENT_LIST];
 	unsigned char	type[MAX_NR_CLIENT_LIST];
@@ -267,20 +271,38 @@ typedef struct {
 #ifdef RTCONFIG_LANTIQ
 	time_t		tstamp[MAX_NR_CLIENT_LIST];
 #endif
+#ifndef NMP_COMPAT_STRUCT
 	char		pap_mac[MAX_NR_CLIENT_LIST][18];
+#endif
+#ifndef NMP_COMPAT_STRUCT
 	char		guest_network[MAX_NR_CLIENT_LIST][4];
+#endif
 	char		ssid[MAX_NR_CLIENT_LIST][32];
 	char 		txrate[MAX_NR_CLIENT_LIST][7];
 	char 		rxrate[MAX_NR_CLIENT_LIST][10];
+#ifndef NMP_COMPAT_STRUCT
 	char 		mac_src[MAX_NR_CLIENT_LIST][30];
+#endif
+#ifndef NMP_COMPAT_STRUCT
 	char 		name_src[MAX_NR_CLIENT_LIST][30];
+#endif
+#ifndef NMP_COMPAT_STRUCT
 	char 		vendor_src[MAX_NR_CLIENT_LIST][30];
+#endif
+#ifndef NMP_COMPAT_STRUCT
 	char 		type_src[MAX_NR_CLIENT_LIST][30];
+#endif
+#ifndef NMP_COMPAT_STRUCT
 	char 		online_src[MAX_NR_CLIENT_LIST][30];
+#endif
+#ifndef NMP_COMPAT_STRUCT
 	char 		wireless_src[MAX_NR_CLIENT_LIST][30];
+#endif
 	unsigned int 	rssi[MAX_NR_CLIENT_LIST];
 	char 		conn_time[MAX_NR_CLIENT_LIST][12];
+#ifndef NMP_COMPAT_STRUCT
 	char 		wireless_auth[MAX_NR_CLIENT_LIST][32];
+#endif
 #if defined(RTCONFIG_FBWIFI) || defined(RTCONFIG_CAPTIVE_PORTAL)
 	char		subunit[MAX_NR_CLIENT_LIST];
 #endif

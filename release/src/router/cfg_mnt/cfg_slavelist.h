@@ -13,11 +13,26 @@
 #define ALIAS_LEN			33
 #define IP_LEN				4
 #define MAC_LEN				6
-#define FWVER_LEN			65
+#define FWVER_LEN			33
 #define MODEL_NAME_LEN		33
 #define TERRITORY_CODE_LEN	33
 #define RE_LIST_JSON_FILE	"/tmp/relist.json"
-#ifdef RTCONFIG_MAX_RE
+/* ABI: CFG_CLIENT_NUM sizes CM_CLIENT_TABLE, which is the layout of the
+   KEY_SHM_CFG (2001) shared-memory segment created by the *prebuilt*
+   cfg_server. It must equal the value cfg_server itself was compiled with,
+   or every field after the first is read at the wrong offset.
+   Ground truth is cfg_server's own shmget() size argument:
+     RT-AX56U/AX58U/AX68U/AX86U/AX88U/GT-AX11000  10752  -> 10 slots (9 REs)
+     GT-AXE11000                                  10792  -> 10 slots (9 REs)
+     AX86U_PRO/AX88U_PRO/GT-AX6000/XT12           19940..20008 -> 17 slots
+     GT-BE98_PRO/RT-BE96U                         20176  -> 17 slots
+   The 3004-vintage prebuilts below predate RTCONFIG_MAX_RE=16, so they must
+   be pinned to MAX_RELIST_NUM (9); newer prebuilts follow RTCONFIG_MAX_RE. */
+#if defined(RTAX56U) || defined(RTAX58U) || defined(RTAX68U) || \
+    defined(RTAX86U) || defined(RTAX88U) || defined(GTAX11000) || \
+    defined(GTAXE11000)
+#define MAX_RELIST_COUNT	MAX_RELIST_NUM
+#elif defined(RTCONFIG_MAX_RE)
 #define MAX_RELIST_COUNT	RTCONFIG_MAX_RE
 #else
 #define MAX_RELIST_COUNT	MAX_RELIST_NUM
@@ -67,11 +82,6 @@ typedef struct _CM_CLIENT_TABLE {
 	unsigned char ap5g1_fh[CFG_CLIENT_NUM][MAC_LEN];
 	unsigned char ap6g_fh[CFG_CLIENT_NUM][MAC_LEN];
 	unsigned char ap6g1_fh[CFG_CLIENT_NUM][MAC_LEN];
-	unsigned char ap2g_iot_fh[CFG_CLIENT_NUM][MAC_LEN];
-	unsigned char ap5g_iot_fh[CFG_CLIENT_NUM][MAC_LEN];
-	unsigned char ap5g1_iot_fh[CFG_CLIENT_NUM][MAC_LEN];
-	unsigned char ap6g_iot_fh[CFG_CLIENT_NUM][MAC_LEN];
-	unsigned char ap6g1_iot_fh[CFG_CLIENT_NUM][MAC_LEN];
 	char ap2g_ssid[CFG_CLIENT_NUM][SSID_LEN];
 	char ap5g_ssid[CFG_CLIENT_NUM][SSID_LEN];
 	char ap5g1_ssid[CFG_CLIENT_NUM][SSID_LEN];
@@ -103,7 +113,6 @@ typedef struct _CM_CLIENT_TABLE {
 	unsigned int joinTime[CFG_CLIENT_NUM];
 #endif
 	int cost[CFG_CLIENT_NUM];
-	int dwb_band[CFG_CLIENT_NUM];
 } CM_CLIENT_TABLE, *P_CM_CLIENT_TABLE;
 
 extern int cm_checkReListExist(char *Mac);
