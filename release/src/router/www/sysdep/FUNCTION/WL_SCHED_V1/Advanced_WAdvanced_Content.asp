@@ -187,7 +187,7 @@ var faq_index_tmp = get_faq_index(FAQ_List, current_page, 1);
 if(country_array == undefined)
 	country_array = [];
 
-var country_selection_list = [["AA", "<#country_AA#>"], ["CN", "<#country_CN#>"], ["SG", "<#country_SG#>"], ["EU", "<#country_EU#>"], ["KR", "<#country_KR#>"], ["RU", "<#country_RU#>"], ["US", "<#country_US#>"], ["AU", "<#country_AU#>"], ["XX", "<#country_AU#>"]];
+var country_selection_list = [["AA", "<#country_AA#>"], ["CN", "<#country_CN#>"], ["SG", "<#country_SG#>"], ["EU", "<#country_EU#>"], ["KR", "<#country_KR#>"], ["RU", "<#country_RU#>"], ["US", "<#country_US#>"], ["AU", "<#country_AU#>"], ["XX", "<#country_AU#>"], ["#a", "#a"]];
 
 var U5_country_code = false;
 if(
@@ -264,6 +264,17 @@ for(i=0;i<country_selection_list.length;i++){
 		name: country_selection_list[i][1]
 	}
 }
+
+if(country_array.length == 0){
+	for(i=0; i<country_selection_list.length; i++){
+		country_array.push(country_selection_list[i][0]);
+	}
+}
+
+if(country_array.indexOf("#a") == -1){
+	country_array.push("#a");
+}
+
 var cfg_ui_region_disable = 0;
 if(location_list_support && amesh_support && ameshRouter_support) {
 	cfg_ui_region_disable = parseInt('<% nvram_get("cfg_ui_region_disable"); %>');
@@ -742,7 +753,7 @@ function initial(){
 		inputCtrl(document.form.wl_btc_mode, 0);
 	
 	/*ui_location_code Setting*/		
-	if(location_list_support && !cfg_ui_region_disable){
+	if(true){
 		generate_country_selection();
 		document.getElementById('region_tr').style.display = "";
 	}
@@ -1012,7 +1023,7 @@ function applyRule(){
 				document.form.acs_dfs.value = "0";
 		}
 		
-		if(location_list_support && !cfg_ui_region_disable){
+		if(true){
 			if((orig_region.length > 0 && orig_region != document.form.ui_location_code.value)
 			|| (orig_region == "" && document.form.ui_location_code.value != tcode)){
 				if(amesh_support && (isSwMode("rt") || isSwMode("ap")) && ameshRouter_support) {
@@ -1047,7 +1058,7 @@ function applyRule(){
 				return;
 		}
 
-		if(location_list_support && !cfg_ui_region_disable){
+		if(true){
 			var uiLocationCode = document.form.ui_location_code.value;
 			var locationCode = (U5_country_code && uiLocationCode == "U5") ? "AA" : uiLocationCode;
 		}
@@ -1056,7 +1067,7 @@ function applyRule(){
 			if(confirm("<#AiMesh_Node_Reboot#>")){
 				FormActions("start_apply.htm", "apply", "reboot", reboot_needed_time);
 
-				if(location_list_support && !cfg_ui_region_disable){
+				if(true){
 					httpApi.nvramSet({
 						"location_code": locationCode,
 						"action_mode": "apply",
@@ -1069,7 +1080,7 @@ function applyRule(){
 			}
 		}
 		else{
-			if(location_list_support && !cfg_ui_region_disable){
+			if(true){
 				httpApi.nvramSet({
 					"location_code": locationCode,
 					"action_mode": "apply",
@@ -2248,7 +2259,7 @@ function wifi7_mode(obj){
 						</td>
 					</tr>					
 					<!-- RT-AC82U & RT-AC58U & 4G-AC53U & MAP-AC1300 & MAP-AC2200 & VZW-AC1300 & RT-AC95U -->
-					<tr id="ext_nss_field" style="display:none">
+					<tr id="ext_nss_field">
 						<th><a class="hintstyle">Extended NSS</a></th>
 						<td>
 							<select name="wl_ext_nss" class="input_option">
@@ -2279,7 +2290,7 @@ function wifi7_mode(obj){
 					</tr>
 
 					<!--QCA9984 platform only, e.g. BRT-AC828 -->
-					<tr id="agiledfs_tr" style="display:none">
+					<tr id="agiledfs_tr">
 						<th>Agile DFS</th>
 						<td>
 							<select name="wl_precacen" class="input_option">
@@ -2301,6 +2312,24 @@ function wifi7_mode(obj){
 					<tr id="region_tr" style="display:none" class="rept ew">
 						<th><a class="hintstyle"><#WLANConfig11b_x_Region#></a></th>
 						<td><div id="region_div"></div></td>
+					</tr>
+					<tr id="raw_country_code_tr" class="rept ew">
+						<th>Raw Country Code</th>
+						<td>
+							wl0_country_code
+							<input type="text" maxlength="4" class="input_6_table" name="wl0_country_code" value="<% nvram_get("wl0_country_code"); %>">
+							wl1_country_code
+							<input type="text" maxlength="4" class="input_6_table" name="wl1_country_code" value="<% nvram_get("wl1_country_code"); %>">
+							wl2_country_code
+							<input type="text" maxlength="4" class="input_6_table" name="wl2_country_code" value="<% nvram_get("wl2_country_code"); %>">
+							<br>
+							wl_country_code
+							<input type="text" maxlength="4" class="input_6_table" name="wl_country_code" value="<% nvram_get("wl_country_code"); %>">
+							regulation_domain
+							<input type="text" maxlength="4" class="input_6_table" name="regulation_domain" value="<% nvram_get("regulation_domain"); %>">
+							regulation_domain_5G
+							<input type="text" maxlength="4" class="input_6_table" name="regulation_domain_5G" value="<% nvram_get("regulation_domain_5G"); %>">
+						</td>
 					</tr>
 				</table>				
 						<div class="apply_gen" id="apply_btn">
