@@ -5333,6 +5333,67 @@ start_wan(void)
 	fc_init();
 #endif
 
+#if defined(HND_ROUTER) && defined(RTCONFIG_DUALWAN) && !defined(RTCONFIG_MULTISERVICE_WAN)
+	if ((nvram_match("switch_wantag", "") || nvram_match("switch_wantag", "none")) &&
+	    !(nvram_match("switch_wantag", "none") && nvram_get_int("switch_stb_x") > 0)) {
+		char wan_ifnames[128], word[IFNAMSIZ], *next;
+		int unit = WAN_UNIT_FIRST;
+
+		strlcpy(wan_ifnames, nvram_safe_get("wan_ifnames"), sizeof(wan_ifnames));
+		foreach (word, wan_ifnames, next) {
+			char prefix[16], baseif[IFNAMSIZ], vlanif[IFNAMSIZ], vid_str[8];
+			char *vlan_suffix;
+			int vid;
+
+			if (unit >= WAN_UNIT_MAX)
+				break;
+			snprintf(prefix, sizeof(prefix), "wan%d_", unit);
+			vid = nvram_pf_get_int(prefix, "vid");
+			if (!eth_wantype(unit) ||
+			    !nvram_pf_match(prefix, "dot1q", "1") ||
+			    vid < 3 || vid > 4094 || (vid >= 3880 && vid <= 3887)) {
+				++unit;
+				continue;
+			}
+
+			strlcpy(baseif, word, sizeof(baseif));
+			vlan_suffix = strstr(baseif, ".v");
+			if (vlan_suffix != NULL)
+				*vlan_suffix = '\0';
+			if (strncmp(baseif, "eth", 3) != 0 ||
+			    find_word(nvram_safe_get("lan_ifnames"), baseif) != NULL) {
+				_dprintf("%s: refusing VLAN %d on non-WAN interface %s\n",
+					__func__, vid, baseif);
+				++unit;
+				continue;
+			}
+
+			snprintf(vlanif, sizeof(vlanif), "%s.v0", baseif);
+			if (if_nametoindex(vlanif) == 0) {
+				snprintf(vid_str, sizeof(vid_str), "%d", vid);
+				ifconfig(baseif, IFUP, NULL, NULL);
+				eval("vlanctl", "--mcast", "--if-create", baseif, "0");
+				if (if_nametoindex(vlanif) == 0) {
+					_dprintf("%s: failed to create %s for VLAN %d\n",
+						__func__, vlanif, vid);
+					++unit;
+					continue;
+				}
+				eval("vlanctl", "--if", baseif, "--rx", "--tags", "1",
+					"--filter-vid", vid_str, "0", "--pop-tag",
+					"--set-rxif", vlanif, "--rule-append");
+				eval("vlanctl", "--if", baseif, "--tx", "--tags", "0",
+					"--filter-txif", vlanif, "--push-tag", "--set-vid",
+					vid_str, "0", "--rule-append");
+				eval("ifconfig", vlanif, "allmulti", "up");
+			}
+
+			nvram_pf_set(prefix, "ifname", vlanif);
+			++unit;
+		}
+	}
+#endif
+
 #if defined(RTCONFIG_USB_MODEM) && !defined(RTCONFIG_SOC_IPQ40XX)
 	if(sw_mode() == SW_MODE_ROUTER && (get_wans_dualwan()&WANSCAP_USB)){
 #if !defined(RTCONFIG_BT_CONN)
