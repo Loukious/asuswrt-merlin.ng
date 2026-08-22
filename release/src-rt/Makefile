@@ -284,7 +284,12 @@ export CONFIG_LINUX26=y
 export IFADDRS_LINKS=$(SRCBASE)/router/libusbmuxd-2.0.2/common/ifaddrs.c $(SRCBASE)/router/minidlna/ifaddrs.c $(SRCBASE)/router/miniupnpd/ifaddrs.c $(SRCBASE)/router/wsdd2/ifaddrs.c
 endif
 ifneq ($(BUILDREV),)
-export BUILDREV := -g$(shell git log --pretty=format:'%h' -n 1)
+ifeq ($(BUILDREV),1)
+BUILDREV_ID := $(shell git log --pretty=format:'%h' -n 1 2>/dev/null)
+else
+BUILDREV_ID := $(patsubst -g%,%,$(BUILDREV))
+endif
+export BUILDREV := -g$(BUILDREV_ID)
 endif
 #-include .config
 #
@@ -400,7 +405,10 @@ uppercase_B = $(shell echo $(BUILD_NAME) | tr a-z  A-Z)
 lowercase_B = $(shell echo $(BUILD_NAME) | tr A-Z a-z)
 BUILD_TIME := $(shell LC_ALL=C date -u)
 BUILD_USER ?= root
-BUILD_INFO := $(shell git $(ASUSWRT_SRC_GIT) log --pretty="%h" -n 1|sed -e "s,\([0-9a-z]\{7\}\)[0-9a-z]*,\1,")
+BUILD_INFO := $(shell git $(ASUSWRT_SRC_GIT) log --pretty="%h" -n 1 2>/dev/null|sed -e "s,\([0-9a-z]\{7\}\)[0-9a-z]*,\1,")
+ifeq ($(BUILD_INFO),)
+BUILD_INFO := $(shell printf '%s' '$(BUILDREV_ID)' | cut -c1-7)
+endif
 
 ifeq ($(CONFIG_LINUX26),y)
 mips_rev = $(if $(filter $(MIPS32),r2),MIPSR2,MIPSR1)
