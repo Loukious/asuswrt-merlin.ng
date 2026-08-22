@@ -1,10 +1,27 @@
 #include "shared.h"
 #include <string.h>
 
+#define ASUS_PRIVACY_POLICY_CURRENT_VERSION 5
+
 __attribute__((weak)) int get_ASUS_privacy_policy_state(const int id)
 {
 	(void)id;
-	return 0;
+	return nvram_get_int("ASUS_privacy_policy") > 0;
+}
+
+__attribute__((weak)) int get_ASUS_privacy_policy(void)
+{
+	return ASUS_PRIVACY_POLICY_CURRENT_VERSION;
+}
+
+__attribute__((weak)) int get_ASUS_privacy_policy_ver(const int id)
+{
+	(void)id;
+	return ASUS_PRIVACY_POLICY_CURRENT_VERSION;
+}
+
+__attribute__((weak)) void init_asus_pp_eula(void)
+{
 }
 
 __attribute__((weak)) int mod_account(const char *const account, const char *const new_account, const char *const new_password)
