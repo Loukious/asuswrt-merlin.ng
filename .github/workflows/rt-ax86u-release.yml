@@ -1,0 +1,138 @@
+name: Build RT-AX86U firmware
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Optional tag to create or update a GitHub release
+        required: false
+        type: string
+  push:
+    tags:
+      - "rt-ax86u-*"
+
+concurrency:
+  group: rt-ax86u-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    container: ubuntu:20.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          dpkg --add-architecture i386
+          apt-get update
+          apt-get install --no-install-recommends --yes \
+            autoconf automake autogen autopoint bc binutils-dev bison build-essential \
+            bzip2 ca-certificates cmake cpio cvs device-tree-compiler diffutils docbook-xsl dos2unix \
+            file flex g++ g++-multilib gawk gcc-multilib gengetopt gettext git \
+            gperf groff-base gtk-doc-tools intltool lib32stdc++6 lib32z1 \
+            libc6-dev-i386 libc6-i386 libelf1:i386 libexpat1-dev libglib2.0-dev \
+            liblzo2-dev libncurses5 libncurses5-dev libncurses5:i386 libproxy-dev \
+            libltdl-dev libslang2-dev libssl-dev libtool libtool-bin libvorbis-dev \
+            libxml-parser-perl libxml2-dev liblzma-dev lzma lzma-dev m4 make \
+            mtd-utils patch perl pkg-config python2 python-is-python2 qemu-user \
+            rsync sharutils shtool subversion tar texinfo u-boot-tools unzip \
+            uuid-dev xxd xsltproc zip zlib1g-dev
+          apt-get clean
+          rm -rf /var/lib/apt/lists/*
+          ln -sf bash /bin/sh
+          useradd --create-home --shell /bin/bash builder
+
+      - name: Check out firmware source
+        uses: actions/checkout@v7
+        with:
+          path: asuswrt-merlin.ng
+          persist-credentials: false
+          sparse-checkout: |
+            release/src
+            release/src-rt
+            release/src-rt-5.02L.07p2axhnd
+            tools
+
+      - name: Check out Broadcom toolchains
+        uses: actions/checkout@v7
+        with:
+          repository: RMerl/am-toolchains
+          ref: d1af80e6b6686a4edc680386c09a8361453dd5c1
+          path: am-toolchains
+          persist-credentials: false
+          sparse-checkout: |
+            brcm-arm-hnd/crosstools-arm-gcc-5.3-linux-4.1-glibc-2.22-binutils-2.25
+            brcm-arm-hnd/crosstools-aarch64-gcc-5.3-linux-4.1-glibc-2.22-binutils-2.25
+            brcm-arm-hnd/crosstools-arm-gcc-5.5-linux-4.1-glibc-2.26-binutils-2.28.1
+            brcm-arm-hnd/crosstools-aarch64-gcc-5.5-linux-4.1-glibc-2.26-binutils-2.28.1
+
+      - name: Configure toolchains
+        run: |
+          rm -rf /opt/toolchains
+          ln -s "$GITHUB_WORKSPACE/am-toolchains/brcm-arm-hnd" /opt/toolchains
+
+      - name: Build and package firmware
+        env:
+          BUILDREV: "1"
+          TOOLCHAIN_BASE: /opt/toolchains
+        run: |
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          runuser --user builder -- env \
+            BUILDREV="$BUILDREV" \
+            TOOLCHAIN_BASE="$TOOLCHAIN_BASE" \
+            "$GITHUB_WORKSPACE/asuswrt-merlin.ng/tools/ci/build-rt-ax86u.sh" \
+            "$GITHUB_WORKSPACE/dist/rt-ax86u"
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: rt-ax86u-firmware
+          path: dist/rt-ax86u/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  release:
+    if: ${{ github.event_name == 'push' || inputs.release_tag != '' }}
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.release_tag }}
+    steps:
+      - name: Download firmware artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: rt-ax86u-firmware
+          path: release-assets
+
+      - name: Create or update release
+        run: |
+          set -Eeuo pipefail
+          if find release-assets -type f -iname '*cferom*' | grep -q .; then
+            echo "Refusing to release a CFE firmware image" >&2
+            exit 1
+          fi
+
+          assets=(release-assets/*)
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$RELEASE_TAG" "${assets[@]}" \
+              --target "$GITHUB_SHA" \
+              --title "RT-AX86U $RELEASE_TAG" \
+              --prerelease \
+              --notes "Experimental RT-AX86U port. Flash only the _pureubi.w file inside the archive; never use a _cferom_ image." \
+              --generate-notes
+          fi
