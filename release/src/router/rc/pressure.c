@@ -15,7 +15,6 @@
  */
 
 #include <stdio.h>
-#include <stdbool.h>
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -370,7 +369,7 @@ pressure_main(int argc, char **argv)
 	struct pollfd fds[2];
 	char buf[BUF_MAX];
 	ssize_t num;
-	bool delta_ang_en = false;
+	int delta_ang_en = 0;
 	int frequency = -1; // 40Hz
 	int timeout = 8; // seconds
 	int mode = -1; // default mode

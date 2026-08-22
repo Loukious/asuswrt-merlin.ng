@@ -25001,17 +25001,19 @@ void
 start_dns_ping(void)
 {
 	char dns_ping_list_tmp[1024] = {0};
+	char *dns_ping_argv[] = { "dns_ping", NULL, NULL };
 
 	stop_dns_ping();
 
 	snprintf(dns_ping_list_tmp, sizeof(dns_ping_list_tmp), "%s", nvram_safe_get("dns_ping_list_tmp"));
 
 	if(dns_ping_list_tmp[0] != '\0'){
-		safe_do_system("dns_ping \"%s\"", dns_ping_list_tmp);
+		dns_ping_argv[1] = dns_ping_list_tmp;
+		_eval(dns_ping_argv, NULL, 0, NULL);
 		nvram_unset("dns_ping_list_tmp");
 	}
 	else{
-		safe_do_system("dns_ping");
+		_eval(dns_ping_argv, NULL, 0, NULL);
 	}
 }
 

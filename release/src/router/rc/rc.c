@@ -102,7 +102,7 @@ double get_wifi_maxpower(int target_unit);
 extern int codb_test();
 #endif
 
-int getPid_fromFile(char *file_name)
+__attribute__((weak)) int getPid_fromFile(char *file_name)
 {
 	FILE *fp;
 	char *pidfile = file_name;
