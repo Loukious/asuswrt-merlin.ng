@@ -184,7 +184,7 @@ ifneq ($(BETA),)
 KERNEL_VER := $(KERNEL_VER_BETA)
 endif
 
-REPO_RESULT := $(shell repo list 2>&1 > /dev/null && echo y)
+REPO_RESULT := $(shell repo list > /dev/null 2>&1 && echo y)
 export UNDER_REPO_ENV := $(shell echo "$(REPO_RESULT)" | tail -c 2)
 ifeq ($(UNDER_REPO_ENV),y)
 export ASUSWRT_SRC_GIT := "--git-dir=../../.git"
