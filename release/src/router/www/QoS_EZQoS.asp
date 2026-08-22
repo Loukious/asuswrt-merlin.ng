@@ -273,6 +273,9 @@ if(dualwan_type.length == 2){
 	var dw_secondary = dualwan_type[1].toLowerCase();
 }
 	var wans_lanport_orig = httpApi.nvramGet(["wans_lanport"]).wans_lanport;
+	var wans_mode = '<% nvram_get("wans_mode"); %>';
+	var wans_extwan = httpApi.nvramGet(["wans_extwan"], true).wans_extwan;
+	var eth_wan_list = httpApi.hookGet("get_ethernet_wan_list", true);
 	var dsllink_statusstr = "";
 	var dsllink_statusstr_secondary = "";
 	if(wans_flag == 1){	//dual_wan enabled
@@ -321,6 +324,96 @@ var faq_index_tmp = get_faq_index(FAQ_List, current_page, 1);
 
 if(geforceNow_support){
 	var orig_nvgfn_enable = httpApi.nvramGet(["nvgfn_enable"], true).nvgfn_enable;
+}
+
+/* Per-WAN QoS settings (JavaScript-side state for WAN selector) */
+var qos_wan = [];
+qos_wan[0] = {
+	type: '<% nvram_get("qos_type"); %>',
+	type_orig: '<% nvram_get("qos_type"); %>',
+	overhead: '<% nvram_get("qos_overhead"); %>',
+	atm: '<% nvram_get("qos_atm"); %>',
+	mpu: '<% nvram_get("qos_mpu"); %>',
+	obw: '<% nvram_get("qos_obw"); %>',
+	ibw: '<% nvram_get("qos_ibw"); %>'
+};
+qos_wan[1] = {
+	type: '<% nvram_get("qos_type1"); %>',
+	type_orig: '<% nvram_get("qos_type1"); %>',
+	overhead: '<% nvram_get("qos_overhead1"); %>',
+	atm: '<% nvram_get("qos_atm1"); %>',
+	mpu: '<% nvram_get("qos_mpu1"); %>',
+	obw: '<% nvram_get("qos_obw1"); %>',
+	ibw: '<% nvram_get("qos_ibw1"); %>'
+};
+var qos_current_unit = 0;
+
+function save_qos_wan_state(unit){
+	qos_wan[unit].type = document.form.qos_type.value;
+	qos_wan[unit].overhead = document.form.qos_overhead.value;
+	qos_wan[unit].atm = document.form.qos_atm.value;
+	qos_wan[unit].mpu = document.form.qos_mpu.value;
+	var obw_val = parseFloat(document.form.obw.value);
+	var ibw_val = parseFloat(document.form.ibw.value);
+	if(document.getElementById("auto") && document.getElementById("auto").checked){
+		qos_wan[unit].obw = "0";
+		qos_wan[unit].ibw = "0";
+	} else {
+		qos_wan[unit].obw = String(Math.round((isNaN(obw_val) ? 0 : obw_val) * 1024));
+		qos_wan[unit].ibw = String(Math.round((isNaN(ibw_val) ? 0 : ibw_val) * 1024));
+	}
+}
+
+function load_qos_wan_state(unit){
+	document.form.qos_type.value = qos_wan[unit].type;
+	document.form.qos_type_orig.value = qos_wan[unit].type_orig;
+	document.form.qos_overhead.value = qos_wan[unit].overhead;
+	document.form.qos_atm.value = qos_wan[unit].atm;
+	document.form.qos_mpu.value = qos_wan[unit].mpu;
+	var obw = parseInt(qos_wan[unit].obw) || 0;
+	var ibw = parseInt(qos_wan[unit].ibw) || 0;
+	document.form.obw.value = (obw / 1024).toFixed(2);
+	document.form.ibw.value = (ibw / 1024).toFixed(2);
+	if(obw == 0 && ibw == 0){
+		document.getElementById("auto").checked = true;
+	} else {
+		document.getElementById("manu").checked = true;
+	}
+}
+
+function change_qos_wan_unit(new_unit){
+	new_unit = parseInt(new_unit);
+	if(new_unit === qos_current_unit) return;
+	save_qos_wan_state(qos_current_unit);
+	qos_current_unit = new_unit;
+	load_qos_wan_state(new_unit);
+	change_qos_type(qos_wan[new_unit].type);
+}
+
+function populate_per_wan_fields(){
+	/* WAN0 */
+	document.form.qos_type.value = qos_wan[0].type;
+	document.form.qos_type_orig.value = qos_wan[0].type_orig;
+	document.form.qos_overhead.value = qos_wan[0].overhead;
+	document.form.qos_atm.value = qos_wan[0].atm;
+	document.form.qos_mpu.value = qos_wan[0].mpu;
+	document.form.qos_obw.disabled = false;
+	document.form.qos_ibw.disabled = false;
+	document.form.qos_obw.value = qos_wan[0].obw;
+	document.form.qos_ibw.value = qos_wan[0].ibw;
+	/* WAN1 */
+	document.form.qos_type1.disabled = false;
+	document.form.qos_type1.value = qos_wan[1].type;
+	document.form.qos_overhead1.disabled = false;
+	document.form.qos_overhead1.value = qos_wan[1].overhead;
+	document.form.qos_atm1.disabled = false;
+	document.form.qos_atm1.value = qos_wan[1].atm;
+	document.form.qos_mpu1.disabled = false;
+	document.form.qos_mpu1.value = qos_wan[1].mpu;
+	document.form.qos_obw1.disabled = false;
+	document.form.qos_ibw1.disabled = false;
+	document.form.qos_obw1.value = qos_wan[1].obw;
+	document.form.qos_ibw1.value = qos_wan[1].ibw;
 }
 
 function show_up_down(value){
@@ -430,6 +523,53 @@ function initial(){
 
 	if(codel_support || cake_support) {
 		build_overhead_presets()
+	}
+
+	/* Setup WAN selector for dual-WAN per-WAN QoS (load balance only) */
+	if(wans_flag == 1 && wans_mode == "lb"){
+		var wansel = document.getElementById("qos_wan_unit");
+		if(wansel){
+			for(var w = 0; w < dualwan_type.length; w++){
+				var wname = dualwan_type[w].toUpperCase();
+				if(wname == "LAN"){
+					if(typeof eth_wan_list !== 'undefined' && !$.isEmptyObject(eth_wan_list)){
+						var special = "";
+						$.each(eth_wan_list, function(key, wan_obj){
+							if(wan_obj.hasOwnProperty("wans_lanport") && wan_obj["wans_lanport"] == wans_lanport_orig){
+								special = wan_obj.wan_name; return false;
+							}
+						});
+						wname = (special != "") ? special : "Ethernet LAN";
+					} else {
+						wname = "Ethernet LAN";
+					}
+				}
+				else if(wname == "WAN"){
+					if(typeof eth_wan_list !== 'undefined' && !$.isEmptyObject(eth_wan_list)){
+						var ethwan = "";
+						$.each(eth_wan_list, function(key, wan_obj){
+							var matched = true;
+							if(wan_obj.hasOwnProperty("extra_settings")){
+								$.each(wan_obj.extra_settings, function(k2, v2){
+									if(httpApi.nvramGet([k2], true)[k2] != v2){ matched = false; return false; }
+								});
+							}
+							if(matched){ ethwan = wan_obj.wan_name; return false; }
+						});
+						if(ethwan != "") wname = ethwan;
+					}
+				}
+				else if(wname == "USB" && based_modelid.substring(0,3) == "4G-"){
+					wname = "<#Mobile_title#>";
+				}
+				var opt = document.createElement("option");
+				opt.value = w;
+				opt.text = wname;
+				wansel.add(opt);
+			}
+			wansel.selectedIndex = 0;
+			document.getElementById("QoSWANscap").style.display = "";
+		}
 	}
 
 	var qos_type = document.form.qos_type.value;
@@ -628,7 +768,7 @@ function init_changeScale(){
 		document.form.ibw.value = (download/1024).toFixed(2);
 	}
 
-	if(mtwancfg_support &&  wans_flag == "1") {
+	if(mtwancfg_support) {
 		var upload1 = document.form.qos_obw1.value;
 		var download1 = document.form.qos_ibw1.value;
 
@@ -778,7 +918,7 @@ function validForm(){
 
 
 
-			if(mtwancfg_support && wans_flag == "1") {
+			if(mtwancfg_support) {
 
 				if( ((qos_type == 1 && document.form.bw_setting_name[1].checked == true ) || qos_type == 0 || qos_type == 3) && (document.form.obw1.value.length == 0 || document.form.obw1.value == 0)){		// To check field is 0 && Traditional QoS
 					alert("<#QoS_invalid_zero#>");
@@ -948,6 +1088,16 @@ function determineActionScript(){
 
 	if((document.form.qos_type_orig.value != document.form.qos_type.value) && document.form.qos_type.value == "0")
 		document.form.next_page.value = "Advanced_QOSUserRules_Content.asp";
+
+	/* Per-WAN type changes on WAN1 should restart QoS too */
+	if(wans_flag == 1 && wans_mode == "lb" && !mtwancfg_support){
+		if(qos_wan[1].type_orig != qos_wan[1].type){
+			if(document.form.action_script.value != "reboot"){
+				if(document.form.action_script.value.indexOf("restart_qos") == -1)
+					document.form.action_script.value = "restart_qos;restart_firewall;";
+			}
+		}
+	}
   
   if(router_boost_support)
   {
@@ -956,7 +1106,16 @@ function determineActionScript(){
 }
 
 function submitQoS(){
+	/* Save current WAN state for per-WAN field population */
+	if(wans_flag == 1 && wans_mode == "lb" && !mtwancfg_support){
+		save_qos_wan_state(qos_current_unit);
+	}
+
 	if(validForm()){
+		/* Populate all per-WAN hidden fields before submission */
+		if(wans_flag == 1 && wans_mode == "lb" && !mtwancfg_support){
+			populate_per_wan_fields();
+		}
 		if(document.form.qos_enable.value == "1" && document.form.qos_type.value == "1" && document.form.TM_EULA.value == "0"){
 			if(policy_status.TM == 0 || policy_status.TM_time == ''){
                 const policyModal = new PolicyModalComponent({
@@ -1973,6 +2132,10 @@ function set_overhead(entry) {
 			<input type="hidden" name="qos_ibw" value="<% nvram_get("qos_ibw"); %>" disabled>
 			<input type="hidden" name="qos_obw1" value="<% nvram_get("qos_obw1"); %>" disabled>
 			<input type="hidden" name="qos_ibw1" value="<% nvram_get("qos_ibw1"); %>" disabled>
+			<input type="hidden" name="qos_type1" value="<% nvram_get("qos_type1"); %>" disabled>
+			<input type="hidden" name="qos_overhead1" value="<% nvram_get("qos_overhead1"); %>" disabled>
+			<input type="hidden" name="qos_atm1" value="<% nvram_get("qos_atm1"); %>" disabled>
+			<input type="hidden" name="qos_mpu1" value="<% nvram_get("qos_mpu1"); %>" disabled>
 			<input type="hidden" name="bwdpi_app_rulelist" value="<% nvram_get("bwdpi_app_rulelist"); %>" disabled>
 			<input type="hidden" name="qos_bw_rulelist" value="" disabled>
 
@@ -2031,6 +2194,23 @@ function set_overhead(entry) {
 											</tr>
 										</table>
 									</div>
+								</td>
+							</tr>
+							<tr>
+								<td valign="top">
+									<table id="QoSWANscap" width="95%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable" style="margin-left:3px;display:none;">
+										<thead>
+										<tr>
+											<td colspan="2">WAN Selection</td>
+										</tr>
+										</thead>
+										<tr>
+											<th>WAN Interface</th>
+											<td>
+												<select class="input_option" id="qos_wan_unit" onchange="change_qos_wan_unit(this.value);"></select>
+											</td>
+										</tr>
+									</table>
 								</td>
 							</tr>
 							<tr>

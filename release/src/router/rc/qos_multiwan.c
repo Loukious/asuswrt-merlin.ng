@@ -1203,6 +1203,24 @@ static int start_tqos(void)
 #endif
 			continue;
 		}
+
+		/* Per-WAN QoS type check: skip units not configured for Traditional */
+		{
+			int unit_type;
+			if (unit == 0)
+				unit_type = nvram_get_int("qos_type");
+			else {
+				char type_nv[16];
+				snprintf(type_nv, sizeof(type_nv), "qos_type%d", unit);
+				unit_type = nvram_get_int(type_nv);
+			}
+			if (unit_type != 0) {
+				/* Still add dispatch entry for other engines' scripts */
+				fprintf(f_top, "[ -e %s ] && %s \"$1\"\n", fname, fname);
+				continue;
+			}
+		}
+
 		if (!(f = fopen(fname, "w"))) {
 			fprintf(stderr, "[qos] Can't write to %s\n", fname);
 			continue;
@@ -2524,6 +2542,10 @@ static int start_bandwidth_limiter_AMAS_WGN(void)
 int start_iQos(void)
 {
 	int status = 0, qos_type = nvram_get_int("qos_type");
+#if defined(RTCONFIG_DUALWAN)
+	int qos_type1 = nvram_get_int("qos_type1");
+	int need_tqos = 0, need_cake = 0;
+#endif
 
 #ifdef DSL_AX82U
 	if (is_ax5400_i1()) config_obw();
@@ -2539,6 +2561,32 @@ int start_iQos(void)
 		else
 			return -1;
 	}
+
+#if defined(RTCONFIG_DUALWAN)
+	/* Check if dual-WAN load-balance needs mixed-engine dispatch */
+	if (!nvram_match("wans_mode", "fo") && !nvram_match("wans_mode", "fb")) {
+		if (qos_type == 0)  need_tqos = 1;
+		if (qos_type == 9)  need_cake = 1;
+		if (qos_type1 == 0) need_tqos = 1;
+		if (qos_type1 == 9) need_cake = 1;
+
+		if (need_tqos + need_cake > 1) {
+			/* Mixed per-WAN types: call engines in sequence.
+			 * Each engine creates per-unit scripts only for its type.
+			 * The last engine's top-level dispatcher references all units
+			 * via [ -e ] checks, so all per-unit scripts are dispatched.
+			 */
+			if (need_tqos)
+				status |= start_tqos();
+			if (need_cake)
+				status |= start_cake();
+
+			if (status < 0)
+				_dprintf("[%s] status = %d\n", __func__, status);
+			return status;
+		}
+	}
+#endif
 
 	switch (qos_type) {
 	case 0:
@@ -2617,112 +2665,192 @@ void ForceDisableWLan_bw(void)
 int start_cake(void)
 {
 	unsigned int ibw, obw;
-	FILE *f;
+	FILE *f, *f_top;
 	char overheadstr[32];
 	char ibwstr[32];
 	char obwstr[32];
 	char *mode;
 	char nvnat[16];
-	int nat;
+	char confname[64];
+	char fname[64];
+	char mif[IFNAMSIZ];
+	int nat, unit;
+	char *wan;
 
-	if((f = fopen("/etc/cake-qos.conf", "w")) == NULL) return -2;
+	/* Top-level dispatch script */
+	if ((f_top = fopen(qosfn, "w")) == NULL) return -2;
+	fprintf(f_top, "#!/bin/sh\n");
 
-	switch (nvram_get_int("qos_atm")) {
-		case 0:
-			mode = "";
-			break;
-		case 1:
-			mode = "atm";
-			break;
-		case 2:
-			mode = "ptm";
-			break;
-		default:
-			mode = "";
+	for (unit = WAN_UNIT_FIRST; unit < WAN_UNIT_MAX; ++unit) {
+		wan = get_wan_ifname(unit);
+		if (!wan || *wan == '\0')
+			continue;
+
+		snprintf(fname, sizeof(fname), "%s.%d", TMP_QOS, unit);
+		snprintf(mif, sizeof(mif), "ifb4%s", wan);
+
+		if (wan_primary_ifunit() != unit
+#if defined(RTCONFIG_DUALWAN)
+		    && (nvram_match("wans_mode", "fo") || nvram_match("wans_mode", "fb"))
+#endif
+		   )
+		{
+			if (f_exists(fname))
+				unlink(fname);
+			/* Clean up cake qdiscs on unused WAN */
+			eval("tc", "qdisc", "del", "dev", wan, "root");
+			eval("tc", "qdisc", "del", "dev", wan, "ingress");
+			eval("tc", "qdisc", "del", "dev", mif, "root");
+			eval("ip", "link", "set", mif, "down");
+			eval("ip", "link", "del", "dev", mif);
+			continue;
+		}
+
+		/* Per-WAN QoS type check: skip units not configured for Cake */
+		{
+			int unit_type;
+			if (unit == 0)
+				unit_type = nvram_get_int("qos_type");
+			else {
+				char type_nv[16];
+				snprintf(type_nv, sizeof(type_nv), "qos_type%d", unit);
+				unit_type = nvram_get_int(type_nv);
+			}
+			if (unit_type != 9) {
+				/* Still add dispatch entry for other engines' scripts */
+				fprintf(f_top, "[ -e %s ] && %s \"$1\"\n", fname, fname);
+				continue;
+			}
+		}
+
+		/* Per-WAN overhead / framing */
+#if defined(RTCONFIG_DUALWAN)
+		if (unit != 0) {
+			char atm_nv[16], ovh_nv[16], mpu_nv[16];
+			snprintf(atm_nv, sizeof(atm_nv), "qos_atm%d", unit);
+			snprintf(ovh_nv, sizeof(ovh_nv), "qos_overhead%d", unit);
+			snprintf(mpu_nv, sizeof(mpu_nv), "qos_mpu%d", unit);
+			switch (nvram_get_int(atm_nv)) {
+				case 1:  mode = "atm"; break;
+				case 2:  mode = "ptm"; break;
+				default: mode = "";
+			}
+			snprintf(overheadstr, sizeof(overheadstr), "overhead %d mpu %d",
+				nvram_get_int(ovh_nv), nvram_get_int(mpu_nv));
+		} else
+#endif
+		{
+			switch (nvram_get_int("qos_atm")) {
+				case 1:  mode = "atm"; break;
+				case 2:  mode = "ptm"; break;
+				default: mode = "";
+			}
+			snprintf(overheadstr, sizeof(overheadstr), "overhead %d mpu %d",
+				nvram_get_int("qos_overhead"), nvram_get_int("qos_mpu"));
+		}
+
+		/* Per-WAN bandwidth */
+#if defined(RTCONFIG_DUALWAN)
+		if (unit != 0) {
+			char ibw_nv[16], obw_nv[16];
+			snprintf(ibw_nv, sizeof(ibw_nv), "qos_ibw%d", unit);
+			snprintf(obw_nv, sizeof(obw_nv), "qos_obw%d", unit);
+			ibw = strtoul(nvram_safe_get(ibw_nv), NULL, 10);
+			obw = strtoul(nvram_safe_get(obw_nv), NULL, 10);
+		} else
+#endif
+		{
+			ibw = strtoul(nvram_safe_get("qos_ibw"), NULL, 10);
+			obw = strtoul(nvram_safe_get("qos_obw"), NULL, 10);
+		}
+
+		if (ibw == 0)
+			*ibwstr = '\0';
+		else
+			snprintf(ibwstr, sizeof(ibwstr), "bandwidth %dkbit", ibw);
+
+		if (obw == 0)
+			*obwstr = '\0';
+		else
+			snprintf(obwstr, sizeof(obwstr), "bandwidth %dkbit", obw);
+
+		snprintf(nvnat, sizeof(nvnat), "wan%d_nat_x", unit);
+		nat = nvram_get_int(nvnat);
+
+		/* Per-WAN config file (keep /etc/cake-qos.conf for unit 0 backward compat) */
+		if (unit == 0)
+			strlcpy(confname, "/etc/cake-qos.conf", sizeof(confname));
+		else
+			snprintf(confname, sizeof(confname), "/etc/cake-qos-%d.conf", unit);
+
+		if ((f = fopen(confname, "w")) == NULL)
+			continue;
+
+		fprintf(f,
+			"#!/bin/sh\n\n"
+			"ULIF='%s'\n"
+			"DLIF='%s'\n"
+			"MIF='ifb4%s'\n"
+			"ULBW='%s'\n"
+			"DLBW='%s'\n"
+			"OVERHEAD='%s'\n"
+			"FRAMING='%s'\n"
+			"ULPRIOQUEUE='diffserv3'\n"
+			"DLPRIOQUEUE='besteffort'\n"
+			"ULOPTIONS='%s dual-srchost'\n"
+			"DLOPTIONS='%s wash dual-dsthost ingress'\n",
+
+			wan, wan, wan,
+			obwstr, ibwstr,
+			overheadstr, mode,
+			(nat ? "nat" : ""),
+			(nat ? "nat" : "")
+		);
+
+		if (unit == 0)
+			append_custom_config("cake-qos.conf", f);
+		fclose(f);
+		chmod(confname, 0755);
+
+		/* Per-WAN tc script */
+		if ((f = fopen(fname, "w")) == NULL)
+			continue;
+
+		fprintf(f,
+			"#!/bin/sh\n"
+			"source %s\n\n"
+
+			"case \"$1\" in\n"
+			"start)\n"
+			"# Upload\n"
+			"\ttc qdisc add dev $ULIF root cake $ULPRIOQUEUE $ULBW $OVERHEAD $FRAMING $ULOPTIONS 2>/dev/null\n\n"
+
+			"# Download\n"
+			"\tip link add name $MIF type ifb 2>/dev/null\n"
+			"\ttc qdisc add dev $DLIF handle ffff: ingress 2>/dev/null\n"
+			"\ttc qdisc add dev $MIF root cake $DLPRIOQUEUE $DLBW $OVERHEAD $FRAMING $DLOPTIONS 2>/dev/null\n"
+			"\tip link set $MIF up 2>/dev/null\n"
+			"\ttc filter add dev $DLIF parent ffff: prio 10 matchall action mirred egress redirect dev $MIF 2>/dev/null\n\n"
+
+			"\t;;\n"
+			"stop)\n"
+			"\ttc qdisc del dev $ULIF root 2>/dev/null\n"
+			"\ttc qdisc del dev $DLIF ingress 2>/dev/null\n"
+			"\ttc qdisc del dev $MIF root 2>/dev/null\n"
+			"\tip link set $MIF down 2>/dev/null\n"
+			"\tip link del dev $MIF 2>/dev/null\n"
+			"\t;;\n"
+			"*)\n"
+			"esac\n",
+			confname);
+
+		fclose(f);
+		chmod(fname, 0755);
+
+		fprintf(f_top, "[ -e %s ] && %s \"$1\"\n", fname, fname);
 	}
 
-	ibw = strtoul(nvram_safe_get("qos_ibw"), NULL, 10);
-	obw = strtoul(nvram_safe_get("qos_obw"), NULL, 10);
-
-	if (ibw == 0)
-		*ibwstr = '\0';
-	else
-		snprintf(ibwstr, sizeof(ibwstr), "bandwidth %dkbit", ibw);
-
-	if (obw == 0)
-		*obwstr = '\0';
-	else
-		snprintf(obwstr, sizeof(obwstr), "bandwidth %dkbit", obw);
-
-	snprintf(overheadstr, sizeof(overheadstr), "overhead %d mpu %d", nvram_get_int("qos_overhead"), nvram_get_int("qos_mpu"));
-
-	const char *wan_ifname = get_wan_ifname(wan_primary_ifunit());
-
-	snprintf(nvnat, sizeof (nvnat), "wan%d_nat_x", wan_primary_ifunit());
-	nat = nvram_get_int(nvnat);
-
-	/* Config parameters */
-	fprintf(f,
-		"#!/bin/sh\n\n"
-		"ULIF='%s'\n"
-		"DLIF='%s'\n"
-		"MIF='ifb4%s'\n"
-		"ULBW='%s'\n"
-		"DLBW='%s'\n"
-		"OVERHEAD='%s'\n"
-		"FRAMING='%s'\n"
-		"ULPRIOQUEUE='diffserv3'\n"
-		"DLPRIOQUEUE='besteffort'\n"
-		"ULOPTIONS='%s dual-srchost'\n"
-		"DLOPTIONS='%s wash dual-dsthost ingress'\n",
-
-		wan_ifname,
-		wan_ifname,
-		wan_ifname,
-		obwstr,
-		ibwstr,
-		overheadstr,
-		mode,
-		(nat ? "nat" : ""),
-		(nat ? "nat" : "")
-	);
-
-	append_custom_config("cake-qos.conf",f);
-	fclose(f);
-
-
-	if((f = fopen(qosfn, "w")) == NULL) return -2;
-
-	/* Stop/start rules */
-	fprintf(f,
-		"#!/bin/sh\n"
-		"source /etc/cake-qos.conf\n\n"
-
-		"case \"$1\" in\n"
-		"start)\n"
-		"# Upload\n"
-		"\ttc qdisc add dev $ULIF root cake $ULPRIOQUEUE $ULBW $OVERHEAD $FRAMING $ULOPTIONS 2>/dev/null\n\n"
-
-		"# Download\n"
-		"\tip link add name $MIF type ifb 2>/dev/null\n"
-		"\ttc qdisc add dev $DLIF handle ffff: ingress 2>/dev/null\n"
-		"\ttc qdisc add dev $MIF root cake $DLPRIOQUEUE $DLBW $OVERHEAD $FRAMING $DLOPTIONS 2>/dev/null\n"
-		"\tip link set $MIF up 2>/dev/null\n"
-		"\ttc filter add dev $DLIF parent ffff: prio 10 matchall action mirred egress redirect dev $MIF 2>/dev/null\n\n"
-
-		"\t;;\n"
-		"stop)\n"
-		"\ttc qdisc del dev $ULIF root 2>/dev/null\n"
-		"\ttc qdisc del dev $DLIF ingress 2>/dev/null\n"
-		"\ttc qdisc del dev $MIF root 2>/dev/null\n"
-		"\tip link set $MIF down 2>/dev/null\n"
-		"\tip link del dev $MIF 2>/dev/null\n"
-		"\t;;\n"
-		"*)\n"
-		"esac\n");
-
-	fclose(f);
-	chmod("/etc/cake-qos.conf", 0755);
+	fclose(f_top);
 	chmod(qosfn, 0755);
 	run_custom_script("qos-start", 120, "init", NULL);
 	eval((char *)qosfn, "start");
