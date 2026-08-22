@@ -60,6 +60,10 @@ fi
 
 firmware_path="${safe_candidates[0]}"
 firmware_name="$(basename "$firmware_path")"
+if [[ "$BUILDREV" != "1" && "$firmware_name" != *"-g${BUILDREV}_pureubi.w" ]]; then
+	echo "Firmware name does not contain the requested revision: $firmware_name" >&2
+	exit 1
+fi
 firmware_size="$(stat -c '%s' "$firmware_path")"
 if (( firmware_size < 32 * 1024 * 1024 )); then
 	echo "Refusing unexpectedly small firmware image: $firmware_size bytes" >&2
