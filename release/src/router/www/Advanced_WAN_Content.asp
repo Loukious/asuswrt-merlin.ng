@@ -348,14 +348,15 @@ function initial(){
 	else
 		showhide("dot1q_setting",0);
 
-	if(productid == "BRT-AC828" || productid == "RT-AD7200"){      //MODELDEP: BRT-AC828, RT-AD7200
+	if(productid == "BRT-AC828" || productid == "RT-AD7200" || (isSupport("bcmhnd") && !mtlancfg_support)){      //MODELDEP: BRT-AC828, RT-AD7200
 		var wan_type_name = wans_dualwan.split(" ")[`<% nvram_get("wan_unit"); %>` || 0].toUpperCase();
 		if((original_switch_wantag == "none" && original_switch_stb_x != "0") ||
-		   (original_switch_wantag != "none") || (wan_type_name != "WAN" && wan_type_name != "WAN2")){
+		   (original_switch_wantag != "none") || (["WAN", "WAN2", "LAN"].indexOf(wan_type_name) == -1)){
 			document.form.wan_dot1q.value = "0";
 			showhide("wan_dot1q_setting",0);
 		}else{
 			showhide("wan_dot1q_setting",1);
+			showhide("wan_vid_row", document.form.wan_dot1q.value == "1" ? 1 : 0);
 		}
 	}else{
 		document.form.wan_dot1q.value = "0";
@@ -669,7 +670,7 @@ function applyRule(){
 		document.form.ewan_dot1p.disabled = true;
 	}
 
-	if(productid == "BRT-AC828" || productid == "RT-AD7200"){	//MODELDEP: BRT-AC828,RT-AD7200
+	if(productid == "BRT-AC828" || productid == "RT-AD7200" || (isSupport("bcmhnd") && !mtlancfg_support)){	//MODELDEP: BRT-AC828,RT-AD7200
 		if(original_wan_dot1q != document.form.wan_dot1q.value || original_wan_vid != document.form.wan_vid.value){
 			reboot_confirm=1;
 		}
@@ -1063,6 +1064,14 @@ function validForm(){
 				document.form.ewan_dot1p.focus();
 				return false;
 			}
+		}
+	}
+	else if(isSupport("bcmhnd") && !mtlancfg_support && document.form.wan_dot1q.value == 1) {
+		if(!validator.range(document.form.wan_vid, 3, 4094) ||
+		   (document.form.wan_vid.value >= 3880 && document.form.wan_vid.value <= 3887)) {
+			alert("VLAN ID " + document.form.wan_vid.value + " is reserved or invalid. Please use 3-3879 or 3888-4094.");
+			document.form.wan_vid.focus();
+			return false;
 		}
 	}
 	
@@ -2697,14 +2706,14 @@ function get_default_wan_name(){
 						<tr>
 							<th><#WLANConfig11b_WirelessCtrl_button1name#></th>
 							<td>
-								<input type="radio" name="wan_dot1q" class="input" value="1" onclick="return change_common_radio(this, 'IPConnection', 'wan_dot1q', 1);" <% nvram_match("wan_dot1q", "1", "checked"); %>><#checkbox_Yes#>
-								<input type="radio" name="wan_dot1q" class="input" value="0" onclick="return change_common_radio(this, 'IPConnection', 'wan_dot1q', 0);" <% nvram_match("wan_dot1q", "0", "checked"); %>><#checkbox_No#>
+								<input type="radio" name="wan_dot1q" class="input" value="1" onclick="change_common_radio(this, 'IPConnection', 'wan_dot1q', 1);showhide('wan_vid_row',1);" <% nvram_match("wan_dot1q", "1", "checked"); %>><#checkbox_Yes#>
+								<input type="radio" name="wan_dot1q" class="input" value="0" onclick="change_common_radio(this, 'IPConnection', 'wan_dot1q', 0);showhide('wan_vid_row',0);" <% nvram_match("wan_dot1q", "0", "checked"); %>><#checkbox_No#>
 							</td>
 						</tr>
-						<tr>
+						<tr id="wan_vid_row">
 							<th>VLAN ID</th>
 							<td>
-								<input type="text" name="wan_vid" maxlength="4" class="input_6_table" value="<% nvram_get("wan_vid"); %>" onKeyPress="return validator.isNumber(this,event);"> ( 2 ~ 4094 )
+								<input type="text" name="wan_vid" maxlength="4" class="input_6_table" value="<% nvram_get("wan_vid"); %>" onKeyPress="return validator.isNumber(this,event);"> ( 3 ~ 3879, 3888 ~ 4094 )
 							</td>
 						</tr>
 						</table>
