@@ -16,6 +16,7 @@
 #include <sys/stat.h>
 #include <stdarg.h>
 #include <syslog.h>
+#include <pthread.h>
 #include <sys/ioctl.h>
 #include <net/if.h>
 #include <sys/socket.h>
@@ -3522,22 +3523,31 @@ _dprintf("%s: Finish.\n", __FUNCTION__);
 void logmessage_normal(char *logheader, char *fmt, ...){
   va_list args;
   char buf[512];
-  char logheader2[33];
+  static char logheader2[64];
+  static pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
   int level;
 
-  va_start(args, fmt);
+  if (!fmt)
+    return;
 
+  va_start(args, fmt);
   vsnprintf(buf, sizeof(buf), fmt, args);
+  va_end(args);
 
   level = nvram_get_int("message_loglevel");
   if (level > 7) level = 7;
 
-  strlcpy(logheader2, logheader, sizeof (logheader2));
-  replace_char(logheader2, ' ', '_');
-  openlog(logheader2, 0, 0);
+  pthread_mutex_lock(&log_mutex);
+  if (logheader && *logheader) {
+    strlcpy(logheader2, logheader, sizeof (logheader2));
+    replace_char(logheader2, ' ', '_');
+    openlog(logheader2, 0, 0);
+  } else {
+    openlog("router", 0, 0);
+  }
   syslog(level, "%s", buf);
   closelog();
-  va_end(args);
+  pthread_mutex_unlock(&log_mutex);
 }
 
 char *get_logfile_path(void)

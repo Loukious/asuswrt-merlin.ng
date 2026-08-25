@@ -168,6 +168,11 @@ struct json_object* json_tokener_parse_verbose(const char *str, enum json_tokene
     struct json_tokener* tok;
     struct json_object* obj;
 
+    if (!str) {
+        if (error) *error = json_tokener_error_parse_null;
+        return NULL;
+    }
+
     tok = json_tokener_new();
     if (!tok)
       return NULL;

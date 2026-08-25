@@ -717,6 +717,7 @@ static void json_object_string_delete(struct json_object* jso)
 
 struct json_object* json_object_new_string(const char *s)
 {
+  if (!s) s = "";
   struct json_object *jso = json_object_new(json_type_string);
   if(!jso) return NULL;
   jso->_delete = &json_object_string_delete;
@@ -728,6 +729,10 @@ struct json_object* json_object_new_string(const char *s)
 
 struct json_object* json_object_new_string_len(const char *s, int len)
 {
+  if (!s || len < 0) {
+    s = "";
+    len = 0;
+  }
   struct json_object *jso = json_object_new(json_type_string);
   if(!jso) return NULL;
   jso->_delete = &json_object_string_delete;
@@ -741,10 +746,10 @@ struct json_object* json_object_new_string_len(const char *s, int len)
 
 const char* json_object_get_string(struct json_object *jso)
 {
-  if(!jso) return NULL;
+  if(!jso) return "";
   switch(jso->o_type) {
   case json_type_string:
-    return jso->o.c_string.str;
+    return jso->o.c_string.str ? jso->o.c_string.str : "";
   default:
     return json_object_to_json_string(jso);
   }
