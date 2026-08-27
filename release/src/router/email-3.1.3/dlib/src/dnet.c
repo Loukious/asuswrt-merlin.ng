@@ -15,9 +15,14 @@
 #endif
 
 #ifdef HAVE_LIBSSL
+/* x509.h must come before ssl.h: OpenSSL 3.x declares SSL_get1_peer_certificate
+   and the SSL_get_peer_certificate compat macro inside #ifdef OPENSSL_X509_H, so
+   including ssl.h first leaves the call in dnetVerifyCert() undeclared and the
+   link fails. OpenSSL 1.1 declared it unconditionally, hence order used to be
+   irrelevant. Do not re-sort these. */
+#include <openssl/x509.h>
 #include <openssl/ssl.h>
 #include <openssl/crypto.h>
-#include <openssl/x509.h>
 #include <openssl/pem.h>
 #include <openssl/rand.h>
 #endif
