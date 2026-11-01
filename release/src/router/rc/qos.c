@@ -2969,23 +2969,29 @@ int start_bcm_tm(void)
 	dropalg = 4;
 #endif
 
-	wan_ifname = get_wanx_ifname(wan_primary_ifunit());
+	char wan_ifname_phy[IFNAMSIZ];
+	int unit = wan_primary_ifunit();
 
+	snprintf(nvname, sizeof(nvname), "wan%d_dot1q", unit);
+
+	/* Resolve the physical WAN port behind any virtual WAN interface */
+	if (unit == WAN_UNIT_FIRST && !nvram_match("switch_wantag", "")
+	 && (nvram_get_int("switch_stb_x") > 0 || nvram_get_int("switch_wan0tagid") > 0)) {
+		/* ISP/IPTV profile: wan0_ifname and wan_ifnames point to a vlan or bridge device */
+		strlcpy(wan_ifname_phy, wan_if_eth(), sizeof(wan_ifname_phy));
+		wan_ifname = wan_ifname_phy;
+	}
 #if defined(RTCONFIG_MULTISERVICE_WAN)
-	char wan_ifname_phy[IFNAMSIZ] = {0};
-
-	if (is_mswan_enabled()) {
-		char *p;
-
-		strlcpy(wan_ifname_phy, nvram_safe_get("wan_ifnames"), sizeof(wan_ifname_phy));
-		if ((p = strchr(wan_ifname_phy, ' ')) != NULL)
-			*p = '\0';
-		if (!wan_ifname_phy[0])
+	else if (is_mswan_enabled()
+	 || (nvram_match("switch_wantag", "none") && nvram_get_int(nvname))) {
+		/* Multiservice WAN or 802.1Q tag: wanX_ifname is a virtual interface */
+		if (!get_mswan_base_ifname(unit, wan_ifname_phy, sizeof(wan_ifname_phy)))
 			strlcpy(wan_ifname_phy, WAN_IF_ETH, sizeof(wan_ifname_phy));
-
 		wan_ifname = wan_ifname_phy;
 	}
 #endif
+	else
+		wan_ifname = get_wanx_ifname(unit);
 
 	snprintf(nvname, sizeof(nvname), "wan%d_proto", wan_primary_ifunit());
 	wan_proto = nvram_safe_get(nvname);

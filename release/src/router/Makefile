@@ -3701,7 +3701,7 @@ endif
 #      no-ec no-ecdh no-ecdsa no-err no-hw no-jpake no-threads \
 #      no-zlib no-engine no-engines no-sse2 no-perlasm \
 #      no-dtls1 no-store no-psk no-md2 no-mdc2 no-ts
-OPENSSL_CIPHERS := no-ssl2 no-gost no-heartbeats no-err no-unit-test
+OPENSSL_CIPHERS := no-gost no-heartbeats no-err no-unit-test
 ifeq ($(RTCONFIG_OPENVPN),y)
 OPENSSL_CIPHERS += enable-rc5
 endif
@@ -3712,10 +3712,9 @@ else
 INSTALLSUBDIR = /openssl
 endif
 
-openssl: $(OPENSSL)/Makefile $(if $(filter y,$(HND_ROUTER)),fsbuild,)
+openssl: $(if $(filter y,$(HND_ROUTER)),fsbuild,) $(OPENSSL)
 	@$(SEP)
 	[ "$(notdir $(realpath $@))" = "$(OPENSSL)" ] || (rm -f $@ && ln -s $(OPENSSL) $@)
-	$(MAKE) $(OPENSSL)
 
 openssl-clean:
 	@$(MAKE) $(OPENSSL)-clean
