@@ -1,0 +1,38 @@
+{
+  "source_repository": "blackfuel/asuswrt-rt-ax88u",
+  "source_commit": "481642dfe5fa62cc2ccf2b9e656396395181ac58",
+  "source_prefix": "release/src-rt-5.02axhnd/rdp/drivers/bdmf",
+  "destination_prefix": "release/src-rt-5.02L.07p2axhnd/bcmdrivers/opensource/net/wfd/impl1/bdmf-compat",
+  "headers": [
+    {
+      "path": "framework/bdmf_interface.h",
+      "git_blob": "37e272e48713c0eb48f926f3e9af2a35c0f0f0f2",
+      "sha256": "85bdc46fd1014cfff14d99df742b10b43b169d563b4d859fe805f08d250e451c"
+    },
+    {
+      "path": "framework/bdmf_data_types.h",
+      "git_blob": "3be17c7b8dd6f478e690fa147fa1f9c0dacd48e8",
+      "sha256": "e0efc2609ab9d9a466ca443873a083b74c8889afc62739025a3e594f2ef5f23e"
+    },
+    {
+      "path": "system/bdmf_queue.h",
+      "git_blob": "678fb42128920d857a8a4ec6e47d33c4c19e384b",
+      "sha256": "3e0dfbe2571aa0153c64f7bf3094b932585f4676aff23b08455c4c3a6d07fb3d"
+    },
+    {
+      "path": "system/bdmf_errno.h",
+      "git_blob": "13512574ac8f378672f7e29d53de61efc0328dd9",
+      "sha256": "adb0f450e13eb2f84f40521a2bef6a844957a140e41583f7cd0805c2ac469ad0"
+    },
+    {
+      "path": "system/linux/bdmf_system_common.h",
+      "git_blob": "bc1ca511c9b044322f7159880c0b4558cab6ceaa",
+      "sha256": "0c9d18153888d0e8b014a8ac8a78b28d3a0dc681b2cad392f67106ee852e5791"
+    },
+    {
+      "path": "system/linux/ce/bdmf_system.h",
+      "git_blob": "b2bceab17a105ccc1008383d8d23c7e746144eaf",
+      "sha256": "31024beb19848ed6ff958f9c19048694106523109ec5f9d0b1468f2c7b0a01ba"
+    }
+  ]
+}

@@ -42,7 +42,7 @@ jobs:
             liblzo2-dev libncurses5 libncurses5-dev libncurses5:i386 libproxy-dev \
             libltdl-dev libslang2-dev libssl-dev libtool libtool-bin libvorbis-dev \
             libxml-parser-perl libxml2-dev liblzma-dev lzma lzma-dev m4 make \
-            mtd-utils patch perl pkg-config python2 python-is-python2 qemu-user \
+            mtd-utils patch perl pkg-config python2 python3 python-is-python2 qemu-user \
             rsync sharutils shtool subversion tar texinfo u-boot-tools unzip \
             uuid-dev xxd xsltproc zip zlib1g-dev
           apt-get clean
@@ -83,6 +83,8 @@ jobs:
         working-directory: asuswrt-merlin.ng
         run: |
           set -Eeuo pipefail
+          python3 tools/ci/check-wfd-bdmf-headers.py
+          python3 tools/ci/check-ax86u-runner-header.py
           cc -std=c99 -Wall -Wextra -Werror -O2 \
             tools/ci/test-ax86u-rxoffload-policy.c \
             -o "$RUNNER_TEMP/test-ax86u-rxoffload-policy"
@@ -110,6 +112,18 @@ jobs:
         run: |
           rm -rf /opt/toolchains
           ln -s "$GITHUB_WORKSPACE/am-toolchains/brcm-arm-hnd" /opt/toolchains
+
+      - name: Verify Runner descriptor with the firmware compiler
+        working-directory: asuswrt-merlin.ng
+        run: |
+          set -Eeuo pipefail
+          descriptor_compiler=/opt/toolchains/crosstools-aarch64-gcc-5.5-linux-4.1-glibc-2.26-binutils-2.28.1/usr/bin/aarch64-buildroot-linux-gnu-gcc
+          "$descriptor_compiler" -static -std=gnu11 -Wall -Wextra -Werror -O2 \
+            -Irelease/src-rt-5.02L.07p2axhnd/bcmdrivers/opensource/net/wfd/impl1/runner-compat \
+            -Irelease/src-rt-5.02L.07p2axhnd/rdp/drivers/rdp_subsystem/rdp \
+            tools/ci/test-ax86u-runner-descriptor.c \
+            -o "$RUNNER_TEMP/test-ax86u-runner-descriptor"
+          qemu-aarch64 "$RUNNER_TEMP/test-ax86u-runner-descriptor"
 
       - name: Build and package firmware
         env:

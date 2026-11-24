@@ -8,6 +8,15 @@ $(MODULE_NAME)-objs += rate_limiter.o
 endif
 
 EXTRA_CFLAGS += -I$(obj)
+# Only this source-built WFD module uses the verified BCM4908 GPL headers.
+EXTRA_CFLAGS += -I$(src)/bdmf-compat/framework
+EXTRA_CFLAGS += -I$(src)/bdmf-compat/system
+EXTRA_CFLAGS += -I$(src)/bdmf-compat/system/linux
+EXTRA_CFLAGS += -I$(src)/bdmf-compat/system/linux/ce
+EXTRA_CFLAGS += -I$(src)/runner-compat
+EXTRA_CFLAGS += -DWL4908
+EXTRA_CFLAGS += -I$(HND_SRC)/rdp/drivers/rdp_subsystem
+EXTRA_CFLAGS += -I$(HND_SRC)/rdp/drivers/rdp_subsystem/rdp
 EXTRA_CFLAGS += -I$(INC_BRCMDRIVER_PRIV_PATH)/$(BRCM_BOARD)
 EXTRA_CFLAGS += -I$(BRCMDRIVERS_DIR)/opensource/net/enet/shared
 EXTRA_CFLAGS += -I$(INC_RDPA_MW_PATH)

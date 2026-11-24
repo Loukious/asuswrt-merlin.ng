@@ -111,7 +111,8 @@ typedef struct
             /* uint32_t  flow_id:8; */
             /* uint32_t  abs_flag:1; */
             uint32_t    descriptor_type:4;
-            uint32_t    reserved1:5;
+            uint32_t    is_exception:1;
+            uint32_t    reserved1:4;
             uint32_t    dst_ssid:16;
             uint32_t    reason:6;
             uint32_t    payload_offset_flag:1;
@@ -153,5 +154,19 @@ typedef struct
 }
 CPU_RX_DESCRIPTOR;
 #endif
+
+/* RT-AX86U prebuilt wfd.o DWARF: legacy Runner descriptor, not XRDP. */
+_Static_assert(sizeof(CPU_RX_DESCRIPTOR) == 16, "Runner RX descriptor size");
+_Static_assert(__builtin_offsetof(CPU_RX_DESCRIPTOR, word0) == 0, "Runner word0");
+_Static_assert(__builtin_offsetof(CPU_RX_DESCRIPTOR, word1) == 4, "Runner word1");
+_Static_assert(__builtin_offsetof(CPU_RX_DESCRIPTOR, word2) == 8, "Runner word2");
+_Static_assert(__builtin_offsetof(CPU_RX_DESCRIPTOR, word3) == 12, "Runner word3");
+_Static_assert(__builtin_offsetof(CPU_RX_DESCRIPTOR, data_ptr) == 8, "Runner data pointer");
+_Static_assert(__builtin_offsetof(CPU_RX_DESCRIPTOR, wl_metadata) == 12,
+    "Runner little-endian WLAN metadata");
+_Static_assert(__builtin_offsetof(CPU_RX_DESCRIPTOR, free_index) == 12,
+    "Runner little-endian free index");
+_Static_assert(__builtin_offsetof(CPU_RX_DESCRIPTOR, ssid_vector) == 12,
+    "Runner little-endian SSID vector");
 
 #endif /*_RDP_CPU_RING_DEFS_H */

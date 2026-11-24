@@ -18,6 +18,12 @@ worker at line 378, bind at line 1109, and unbind at line 1353. The donor rate
 limiter is also imported for configurations that enable it; its header matches
 the target header.
 
+The omitted BDMF and legacy Runner descriptor headers are supplied only to this
+module, with pinned source provenance and target ABI checks documented in
+`RT-AX86U-WFD-BDMF-HEADERS.md` and `RT-AX86U-RUNNER-HEADERS.md`. The unused
+`rdpa_mw_blog_parse.h` include is removed; it declared middleware routines
+that this WFD header does not call.
+
 `WFD_BUILD_FROM_SOURCE=1` selects the imported source only for RT-AX86U in this
 SDK. Other models retain their existing prebuilt module build. The init log
 references `WFD_RX_LIFECYCLE_FIX_V1`, explicitly placed in `.rodata`; CI verifies

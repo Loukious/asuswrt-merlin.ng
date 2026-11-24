@@ -34,7 +34,6 @@ written consent.
 /******************* Other software units include files *********************/
 /****************************************************************************/
 #include "rdpa_api.h"
-#include "rdpa_mw_blog_parse.h"
 #include "rdp_cpu_ring_defs.h"
 #include "rdp_mm.h"
 #include "rdpa_cpu_helper.h"

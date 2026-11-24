@@ -341,6 +341,9 @@ static void wfd_dump(void);
 #include "xrdp_wfd_inline.h"
 #else
 #include "runner_wfd_inline.h"
+#if defined(CONFIG_BCM94908)
+#include "bdmf-compat/wfd_bdmf_abi.h"
+#endif
 #endif
 void (*wfd_dump_fn)(void) = 0;
 #elif (defined(CONFIG_BCM_FAP) || defined(CONFIG_BCM_FAP_MODULE))
