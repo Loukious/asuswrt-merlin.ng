@@ -1,5 +1,13 @@
 -include $(SRCBASE)/router/.config
 
+# The legacy RT-AX86U SDK has matching GPL WFD source. Build that module
+# so its queue lifecycle fixes reach the image instead of copying wfd.o.
+ifeq ($(BUILD_NAME),RT-AX86U)
+ifeq ($(BCM_502L07P2),y)
+export WFD_BUILD_FROM_SOURCE := 1
+endif
+endif
+
 ifeq ($(HND_ROUTER_BE_4916),y)
 -include $(HND_SRC)/sdk_profile.mak
 endif
@@ -533,7 +541,9 @@ define platformKernelConfig
 				else \
 					cp $(TOP_PLATFORM)/hnd_extra/prebuilt/bcm_enet.o $(HND_SRC)/bcmdrivers/opensource/net/enet/impl5/bcm_enet$(PRBM_EXT).o ; \
 				fi; \
-				cp $(TOP_PLATFORM)/hnd_extra/prebuilt/wfd.o $(HND_SRC)/bcmdrivers/opensource/net/wfd/impl1/wfd$(PRBM_EXT).o ; \
+				if [ "$(WFD_BUILD_FROM_SOURCE)" != "1" ]; then \
+					cp $(TOP_PLATFORM)/hnd_extra/prebuilt/wfd.o $(HND_SRC)/bcmdrivers/opensource/net/wfd/impl1/wfd$(PRBM_EXT).o ; \
+				fi; \
 				if [ "$(HND_ROUTER_AX)" = "y" ]; then \
 					cp $(TOP_PLATFORM)/hnd_extra/prebuilt/ivi_map.h $(HND_SRC)/bcmdrivers/opensource/char/map/impl1/ ; \
 					cp $(TOP_PLATFORM)/hnd_extra/prebuilt/ivi_config.h $(HND_SRC)/bcmdrivers/opensource/char/map/impl1/ ; \

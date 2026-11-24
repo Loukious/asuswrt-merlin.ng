@@ -13,6 +13,10 @@
 
 #include "rc.h"
 
+#if defined(RTAX86U)
+#include "ax86u_rxoffload_policy.h"
+#endif
+
 #include <termios.h>
 #include <dirent.h>
 #include <sys/ioctl.h>
@@ -17600,7 +17604,14 @@ int init_nvram(void)
 	case MODEL_RTAX86U:
 		{
 		char productid[16];
+		const char *rxoffload_default;
 		snprintf(productid, sizeof(productid), "%s", get_productid());
+
+		/* Apply the verified RX fallback before DHD loads; keep TX offload. */
+		rxoffload_default = ax86u_rxoffload_boot_default(productid,
+			nvram_get("dhd1_rnr_rxoffl"));
+		if (rxoffload_default)
+			nvram_set("dhd1_rnr_rxoffl", rxoffload_default);
 
 		nvram_unset("dhd0_rnr_flowring_physize");
 		nvram_unset("dhd1_rnr_flowring_physize");

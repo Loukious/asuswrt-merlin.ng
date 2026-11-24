@@ -67,6 +67,8 @@
 #include <linux/if_ether.h>
 #include <linux/etherdevice.h>
 #include <linux/kthread.h>
+#include <linux/mutex.h>
+#include "wfd_rx_lifecycle.h"
 #include "bcm_pktfwd.h" /* BCM_PKTFWD && BCM_PKTLIST && BCM_PKTQUEUE */
 #include "wfd_dev.h"
 #include "wfd_dev_priv.h"
@@ -85,6 +87,7 @@
 /***************************** Module Version *******************************/
 /****************************************************************************/
 static const char *version = "Wifi Forwarding Driver";
+static const char wfd_rx_lifecycle_marker[] __attribute__((used, section(".rodata"))) = "WFD_RX_LIFECYCLE_FIX_V1";
 
 #define WFD_QUEUE_TO_WFD_IDX_MASK 0x1
 #define WIFI_IF_NAME_STR_LEN  ( IFNAMSIZ )
@@ -309,6 +312,8 @@ struct wfd_object
 static wfd_object_t wfd_objects[WFD_MAX_OBJECTS];
 static int wfd_objects_num=0;
 static spinlock_t wfd_irq_lock[WFD_MAX_OBJECTS];
+/* Bind/unbind sleep; the IRQ locks protect publication and interrupt state. */
+static DEFINE_MUTEX(wfd_lifecycle_mutex);
 /* first Cpu ring queue - Currently pci CPU ring queues must be sequential */
 static const int first_pci_queue = 8;
 
@@ -381,7 +386,8 @@ static int wfd_tasklet_handler(void *context)
     int rx_pktcnt = 0;
     int qid, qidx = 0;
     wfd_object_t * wfd_p = &wfd_objects[wfdIdx];
-    uint32_t qMask = 0;
+    unsigned long qMask = 0;
+    unsigned long flags;
 
 #if defined(WFD_SWQUEUE)
     wfd_swqueue_t * wfd_swqueue = wfd_p->wfd_swqueue;
@@ -405,14 +411,27 @@ static int wfd_tasklet_handler(void *context)
 
         if (wfd_p->wfd_rx_work_avail)
         {
+            WFD_IRQ_LOCK(wfdIdx, flags);
+            wfd_p->wfd_rx_work_avail = wfd_rx_active_work(wfd_p->isValid,
+                wfd_p->wfd_rx_work_avail, wfd_p->wfd_queue_mask);
             qMask = wfd_p->wfd_rx_work_avail;
+            WFD_IRQ_UNLOCK(wfdIdx, flags);
             /* Read from High priority queues first if it's bit is on
                Odd bits correspond to high priority queues
                Even bits correspond to low priority queues
                Hence get the last bit set */
-            qidx = __fls(qMask);
             while (qMask)
             {
+                WFD_IRQ_LOCK(wfdIdx, flags);
+                qMask = wfd_rx_active_work(wfd_p->isValid, qMask,
+                    wfd_p->wfd_queue_mask);
+                if (!qMask)
+                {
+                    WFD_IRQ_UNLOCK(wfdIdx, flags);
+                    break;
+                }
+                qidx = wfd_rx_take_highest(&qMask);
+                WFD_IRQ_UNLOCK(wfdIdx, flags);
                 qid = wfd_get_qid(qidx);
 
                 /* Note: keep num_packets_to_read <= NUM_PACKETS_TO_READ_MAX */
@@ -442,12 +461,15 @@ static int wfd_tasklet_handler(void *context)
                     /* Queue is empty: no more packets,
                      * clear bit atomically and enable interrupts
                      */
+                    WFD_IRQ_LOCK(wfdIdx, flags);
                     clear_bit(qidx, &wfd_p->wfd_rx_work_avail);
-                    wfd_int_enable(wfd_p->wl_radio_idx, qid, qidx);
+                    if (wfd_rx_queue_active(wfd_p->isValid,
+                            wfd_p->wfd_queue_mask, qidx,
+                            WFD_NUM_QUEUE_SUPPORTED))
+                        wfd_int_enable(wfd_p->wl_radio_idx, qid, qidx);
+                    WFD_IRQ_UNLOCK(wfdIdx, flags);
                 }
 
-                qMask &= ~(1 << qidx);
-                qidx--;
             } /*for pci queue*/
         } /* wfd_p->wfd_rx_work_avail */
 
@@ -1025,6 +1047,7 @@ static void wfd_dev_close(void)
 static int wfd_dev_init(void)
 {
     int idx;
+    printk(KERN_INFO "%s\n", wfd_rx_lifecycle_marker);
     if (num_packets_to_read > NUM_PACKETS_TO_READ_MAX)
     {
         printk("%s %s Invalid num_packets_to_read %d\n",__FILE__, __FUNCTION__, num_packets_to_read);    
@@ -1106,6 +1129,75 @@ proc_release:
 /**                                                                        **/
 /**                                                                        **/
 /****************************************************************************/
+/* The lifecycle mutex is held by both bind rollback and normal unbind. */
+static int wfd_release_object(unsigned int idx)
+{
+    wfd_object_t *wfd_p = &wfd_objects[idx];
+    unsigned long flags;
+    int qidx, rc, disable_rc = 0;
+
+    /* Retire first so neither an ISR nor the worker can enable an IRQ. */
+    WFD_IRQ_LOCK(idx, flags);
+    wfd_p->isValid = 0;
+    wfd_p->wfd_rx_work_avail = 0;
+    for (qidx = 0; qidx < WFD_NUM_QUEUE_SUPPORTED; qidx++)
+        if (wfd_p->wfd_queue_mask & (1UL << qidx))
+            wfd_int_disable(wfd_p->wl_radio_idx, wfd_get_qid(qidx), qidx);
+    WFD_IRQ_UNLOCK(idx, flags);
+
+    /* A worker may already be inside bulk_get. Its rings remain allocated. */
+    if (wfd_p->wfd_rx_thread)
+    {
+        kthread_stop(wfd_p->wfd_rx_thread);
+        wfd_p->wfd_rx_thread = NULL;
+    }
+
+    for (qidx = 0; qidx < WFD_NUM_QUEUE_SUPPORTED; qidx++)
+    {
+        if (!(wfd_p->wfd_queue_mask & (1UL << qidx)))
+            continue;
+        rc = wfd_config_rx_queue(idx, wfd_get_qid(qidx), 0,
+            wfd_p->eFwdHookType);
+        if (rc)
+            disable_rc = rc;
+        else
+        {
+            WFD_IRQ_LOCK(idx, flags);
+            wfd_p->wfd_queue_mask &= ~(1UL << qidx);
+            WFD_IRQ_UNLOCK(idx, flags);
+        }
+    }
+
+    if (!wfd_rx_can_release(wfd_p->isValid,
+            wfd_p->wfd_rx_thread != NULL, disable_rc))
+    {
+        /* Keep this slot reserved: failed RDPA shutdown may still own DMA. */
+        WFD_ERROR("WFD %u quarantined after queue disable failure (%d)\n",
+            idx, disable_rc);
+        return 0;
+    }
+
+#if (defined(CONFIG_BCM_RDPA)||defined(CONFIG_BCM_RDPA_MODULE)) && defined(XRDP)
+    wfd_rdpa_uninit(wfd_p->wl_radio_idx);
+#endif
+#if defined(WFD_SWQUEUE)
+    if (wfd_p->wfd_swqueue)
+        wfd_swqueue_fini(idx);
+#endif
+#if defined(BCM_PKTFWD)
+    if (wfd_p->pktlist_context_p)
+        pktlist_context_fini(wfd_p->pktlist_context_p);
+#endif
+    WFD_IRQ_LOCK(idx, flags);
+    memset(wfd_p, 0, sizeof(*wfd_p));
+    WFD_IRQ_UNLOCK(idx, flags);
+#if defined(CONFIG_BCM_PON)
+    if (idx != WFD_BRIDGED_OBJECT_IDX)
+#endif
+        wfd_objects_num--;
+    return 1;
+}
+
 int wfd_bind(struct net_device *wl_dev_p, 
              struct pktlist_context *wl_pktlist_context,
              enumWFD_WlFwdHookType eFwdHookType, 
@@ -1122,15 +1214,19 @@ int wfd_bind(struct net_device *wl_dev_p,
     int minQIdx;
     int maxQIdx;
     int wfd_max_objects;
-    unsigned long tmp_idx;
+    unsigned long tmp_idx = WFD_MAX_OBJECTS;
+    unsigned long flags;
+    int reserved = 0;
     struct task_struct *rx_thread;
+
+    mutex_lock(&wfd_lifecycle_mutex);
 
 #if defined(CONFIG_BCM_PON_RDP)
     wfd_max_objects = WFD_MAX_OBJECTS - 1;
 #else
     wfd_max_objects = WFD_MAX_OBJECTS;
 #endif
-    if (wfd_objects_num > wfd_max_objects)
+    if (wfd_objects_num >= wfd_max_objects)
     {
         WFD_ERROR("ERROR. WFD_MAX_OBJECTS(%d) limit reached\n", WFD_MAX_OBJECTS);
         rc = WFD_FAILURE;
@@ -1171,6 +1267,12 @@ int wfd_bind(struct net_device *wl_dev_p,
         }
 #endif /* !CONFIG_BCM_WLAN_DPDCTL */
 
+        if (tmp_idx >= wfd_max_objects)
+        {
+            rc = WFD_FAILURE;
+            goto wfd_bind_failure;
+        }
+
         /* Get Min & Max Q Indices for this WFD Instance */
         minQIdx = wfd_get_minQIdx(tmp_idx);
         maxQIdx = wfd_get_maxQIdx(tmp_idx);
@@ -1181,9 +1283,24 @@ int wfd_bind(struct net_device *wl_dev_p,
         goto wfd_bind_failure;
 #endif
 
-    memset(&wfd_objects[tmp_idx], 0, sizeof(wfd_objects[tmp_idx]));
+    if (minQIdx < 0 || maxQIdx >= WFD_NUM_QUEUE_SUPPORTED ||
+        wfd_objects[tmp_idx].wfd_bulk_get)
+    {
+        rc = WFD_FAILURE;
+        goto wfd_bind_failure;
+    }
 
-    wfd_objects[tmp_idx].isValid = 1;
+    WFD_IRQ_LOCK(tmp_idx, flags);
+    memset(&wfd_objects[tmp_idx], 0, sizeof(wfd_objects[tmp_idx]));
+    init_waitqueue_head(&wfd_objects[tmp_idx].wfd_rx_thread_wqh);
+    WFD_IRQ_UNLOCK(tmp_idx, flags);
+    reserved = 1;
+#if defined(CONFIG_BCM_PON)
+    if (tmp_idx != WFD_BRIDGED_OBJECT_IDX)
+#endif
+        wfd_objects_num++;
+
+    /* Publish isValid only after queues and the worker are ready. */
     wfd_objects[tmp_idx].wl_dev_p         = wl_dev_p;
     wfd_objects[tmp_idx].eFwdHookType     = eFwdHookType;
     wfd_objects[tmp_idx].isTxChainingReqd = isTxChainingReqd;
@@ -1285,6 +1402,11 @@ int wfd_bind(struct net_device *wl_dev_p,
         for (qidx = minQIdx; qidx <= maxQIdx; qidx++)
         {
            qid = wfd_get_qid(qidx);
+           wfd_int_disable(wl_radio_idx, qid, qidx);
+           /* Also reserve failed configurations for rollback/quarantine. */
+           WFD_IRQ_LOCK(tmp_idx, flags);
+           wfd_objects[tmp_idx].wfd_queue_mask |= (1UL << qidx);
+           WFD_IRQ_UNLOCK(tmp_idx, flags);
 
            if ((rc = wfd_config_rx_queue(tmp_idx, qid, WFD_WLAN_QUEUE_MAX_SIZE, eFwdHookType)) != 0)
            {
@@ -1292,9 +1414,6 @@ int wfd_bind(struct net_device *wl_dev_p,
                goto wfd_bind_failure;
            }
 
-           wfd_int_enable (wl_radio_idx, qid, qidx); 
-
-           wfd_objects[tmp_idx].wfd_queue_mask |= (1 << qidx);
         }
 
 #if defined(WFD_SWQUEUE)
@@ -1309,14 +1428,19 @@ int wfd_bind(struct net_device *wl_dev_p,
 #endif /* WFD_SWQUEUE */
 
         /* Create WFD Thread */
-        init_waitqueue_head(&wfd_objects[tmp_idx].wfd_rx_thread_wqh);
         rx_thread = kthread_create(wfd_tasklet_handler, (void *)tmp_idx, threadname);
         if (IS_ERR(rx_thread)) 
         {
-            return (int)PTR_ERR(rx_thread);
+            rc = (int)PTR_ERR(rx_thread);
+            goto wfd_bind_failure;
         }
 
         wfd_objects[tmp_idx].wfd_rx_thread = rx_thread;
+        WFD_IRQ_LOCK(tmp_idx, flags);
+        wfd_objects[tmp_idx].isValid = 1;
+        for (qidx = minQIdx; qidx <= maxQIdx; qidx++)
+            wfd_int_enable(wl_radio_idx, wfd_get_qid(qidx), qidx);
+        WFD_IRQ_UNLOCK(tmp_idx, flags);
 
         /* wlmngr manages the logic to bind the WFD threads to specific CPUs depending on platform
            Look at function wlmngr_setupTPs() for more details */
@@ -1326,7 +1450,7 @@ int wfd_bind(struct net_device *wl_dev_p,
         printk("\033[1m\033[34m %s: Dev %s wfd_idx %lu wl_radio_idx %d"
             " Type %s:%s configured WFD thread %s "
             "minQId/maxQId (%d/%d), status (%d) qmask 0x%x\033[0m\n",
-            __FUNCTION__, wl_dev_p->name, tmp_idx, wl_radio_idx,
+            __FUNCTION__, wl_dev_p ? wl_dev_p->name : "bridge", tmp_idx, wl_radio_idx,
             ((eFwdHookType == WFD_WL_FWD_HOOKTYPE_SKB) ? "skb" : "fkb"),
             (wfd_objects[tmp_idx].pktlist_context_p == NULL) ? "def" : "sll",
             threadname,
@@ -1337,90 +1461,34 @@ int wfd_bind(struct net_device *wl_dev_p,
     {
         WFD_ERROR("ERROR qidx %d maxq %d\n", (int)maxQIdx,
                   (int)WFD_NUM_QUEUE_SUPPORTED);
+        rc = WFD_FAILURE;
+        goto wfd_bind_failure;
     }
 
-#if defined(CONFIG_BCM_PON)
-    if (tmp_idx != WFD_BRIDGED_OBJECT_IDX)
-#endif
-        wfd_objects_num++;
+    mutex_unlock(&wfd_lifecycle_mutex);
     return (int)tmp_idx;
 
 wfd_bind_failure:
+    if (reserved)
+        wfd_release_object(tmp_idx);
+    mutex_unlock(&wfd_lifecycle_mutex);
     return rc;
 }
 EXPORT_SYMBOL(wfd_bind);
 
 void wfd_unbind(int wfdIdx, enumWFD_WlFwdHookType hook_type)
 {
-    int qidx, qid;
-    int minQIdx;
-    int maxQIdx;
-
-    // simple reclaim iff idx of last bind
-    if ((wfdIdx < 0) || (wfdIdx >= WFD_MAX_OBJECTS))
+    if (wfdIdx < 0 || wfdIdx >= WFD_MAX_OBJECTS)
     {
         WFD_ERROR("wfd_idx %d out of bounds %d\n", wfdIdx, WFD_MAX_OBJECTS);
         return;
     }
 
-    if (wfd_objects[wfdIdx].isValid == 0)
-    {
-        WFD_ERROR("wfd_idx %d is not initialized\n", wfdIdx);
-        return;
-    }
-
-#if defined(CONFIG_BCM96838) ||defined(CONFIG_BCM96848)
-    if (wfdIdx == WFD_BRIDGED_OBJECT_IDX)
-    {
-        /*This unbind is for bridged traffic use the bridged qidx */
-        minQIdx = maxQIdx = WFD_BRIDGED_QUEUE_IDX;
-    }
-    else
-#endif
-    {
-        /* Get Min & Max Q Indices for this WFD Instance */
-        minQIdx = wfd_get_minQIdx(wfdIdx);
-        maxQIdx = wfd_get_maxQIdx(wfdIdx);
-    }
-
-
-    /* free the pci rx queue(s); disable the interrupt(s) */
-    for (qidx = minQIdx; qidx <= maxQIdx; qidx++) 
-    {
-        /* Deconfigure PCI RX queue(s) */
-        qid = wfd_get_qid(qidx);
-        wfd_config_rx_queue(wfdIdx, qid, 0, hook_type);
-        wfd_objects[wfdIdx].wfd_queue_mask &= ~(1 << qidx);
-        wfd_int_disable(wfd_objects[wfdIdx].wl_radio_idx, qid, qidx);
-    }
-
-#if (defined(CONFIG_BCM_RDPA)||defined(CONFIG_BCM_RDPA_MODULE)) && defined(XRDP)
-   wfd_rdpa_uninit(wfd_objects[wfdIdx].wl_radio_idx);
-#endif
-
-   if (wfd_objects[wfdIdx].wfd_rx_thread)
-            kthread_stop(wfd_objects[wfdIdx].wfd_rx_thread);
-
-#if defined(BCM_PKTFWD)
-    if (wfd_objects[wfdIdx].pktlist_context_p)
-    {
-        pktlist_context_t *pktlist_context_p;
-        pktlist_context_p = wfd_objects[wfdIdx].pktlist_context_p;
-
-        /* Debug dump using pktlist_context_dump() */
-        pktlist_context_dump(pktlist_context_p, true, true);
-        /* Free pktlist_context resources using pktlist_context_fini() */
-        pktlist_context_fini(pktlist_context_p);
-    }
-#endif /* BCM_PKTFWD */
-
-#if defined(WFD_SWQUEUE)
-        /* Destruct WFD SW Queue */
-        wfd_swqueue_fini(wfdIdx);
-#endif /* WFD_SWQUEUE */
-
-   memset(&wfd_objects[wfdIdx], 0, sizeof wfd_objects[wfdIdx]);
-   wfd_objects_num--;
+    mutex_lock(&wfd_lifecycle_mutex);
+    /* An inactive quarantined object can retry hardware deconfiguration. */
+    if (wfd_objects[wfdIdx].wfd_bulk_get)
+        wfd_release_object(wfdIdx);
+    mutex_unlock(&wfd_lifecycle_mutex);
 }
 EXPORT_SYMBOL(wfd_unbind);
 
@@ -1572,13 +1640,19 @@ wfd_swqueue_init(wfd_object_t * wfd_p, uint32_t swq_size)
     /* Sanity check */
     WFD_ASSERT(wfd_swqueue->domain < PKTFWD_DOMAINS_WLAN);
 
+    wfd_p->wfd_swqueue = wfd_swqueue;
     /* Register "flush" & "flush complete" handlers with bcm_pktfwd. */
     wfd_swqueue->pktqueue_context_p =
         pktqueue_context_register(wfd_swqueue_flush_pkts,
                 wfd_swqueue_flush_complete,
                 wfd_p, wfd_swqueue->domain);
 
-    wfd_p->wfd_swqueue = wfd_swqueue;
+    if (wfd_swqueue->pktqueue_context_p == PKTQUEUE_CONTEXT_NULL)
+    {
+        wfd_p->wfd_swqueue = WFD_SWQUEUE_NULL;
+        kfree(wfd_swqueue);
+        return WFD_FAILURE;
+    }
 
     PKTQUEUE_TRACE("WFD SW queue initialized swq_size-%d", swq_size);
 
@@ -1602,7 +1676,6 @@ wfd_swqueue_fini(uint32_t wfd_idx)
     pktqueue_context_t * pktqueue_context_p;
 
     wfd_swqueue = wfd_objects[wfd_idx].wfd_swqueue;
-    wfd_objects[wfd_idx].wfd_swqueue = WFD_SWQUEUE_NULL;
 
     WFD_ASSERT(wfd_swqueue != WFD_SWQUEUE_NULL);
 
@@ -1618,6 +1691,10 @@ wfd_swqueue_fini(uint32_t wfd_idx)
         pktqueue_context_unregister(pktqueue_context_p);
     }
 
+    /* Producers must be quiescent after context_unregister; worker is stopped. */
+    __pktqueue_free_pkts(&wfd_swqueue->pktqueue,
+        wfd_swqueue->pktqueue.NBuffPtrType);
+    wfd_objects[wfd_idx].wfd_swqueue = WFD_SWQUEUE_NULL;
     memset(wfd_swqueue, 0xff, sizeof(wfd_swqueue_t));  /* scribble */
     kfree(wfd_swqueue);
 
@@ -1797,7 +1874,8 @@ wfd_swqueue_flush_pkts(void * driver, pktqueue_t * pktqueue)
 
     /* Check for Queue avail */
     /* TODO: Append avail len and drop remaining packets */
-    if (unlikely(wfd_pktqueue->len + pktqueue->len > wfd_swqueue->swq_size))
+    if (unlikely(!wfd_p->isValid ||
+            wfd_pktqueue->len + pktqueue->len > wfd_swqueue->swq_size))
     {
         wfd_swqueue->pkts_dropped += pktqueue->len;
         __pktqueue_free_pkts(pktqueue, pktqueue->NBuffPtrType);
@@ -1822,7 +1900,10 @@ wfd_swqueue_flush_complete(void * driver)
     wfd_object_t      * wfd_p = (wfd_object_t *)driver;
     wfd_swqueue_t     * wfd_swqueue = wfd_p->wfd_swqueue;
 
-    if (likely(wfd_swqueue->swq_schedule == 0))
+    unsigned long flags;
+
+    WFD_IRQ_LOCK(wfd_p->wfd_idx, flags);
+    if (likely(wfd_p->isValid && wfd_swqueue->swq_schedule == 0))
     {
         wfd_swqueue->schedule_cnt++;
         wfd_swqueue->swq_schedule = ~0;
@@ -1830,6 +1911,7 @@ wfd_swqueue_flush_complete(void * driver)
         /* Wake up WFD thread to xmit packets from SW queue */
         WFD_WAKEUP_RXWORKER(wfd_p->wfd_idx);
     }
+    WFD_IRQ_UNLOCK(wfd_p->wfd_idx, flags);
 }   /* wfd_swqueue_flush_complete() */
 
 

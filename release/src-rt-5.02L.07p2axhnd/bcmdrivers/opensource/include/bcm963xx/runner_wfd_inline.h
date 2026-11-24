@@ -244,17 +244,26 @@ static inline int wfd_get_wfd_idx_from_qidx(int qidx)
 /****************************************************************************/
 static inline void wfd_dev_rx_isr_callback(long qidx)
 {
-    int wfdIdx = wfd_get_wfd_idx_from_qidx(qidx);
+    int wfdIdx;
+    unsigned long flags;
 
-    /* Disable PCI interrupt */
+    if (qidx < 0 || qidx >= WFD_NUM_QUEUE_SUPPORTED)
+        return;
+    wfdIdx = wfd_get_wfd_idx_from_qidx(qidx);
+    if (wfdIdx < 0 || wfdIdx >= WFD_MAX_OBJECTS)
+        return;
+
+    WFD_IRQ_LOCK(wfdIdx, flags);
     rdpa_cpu_int_disable(rdpa_cpu_wlan0, qidx);
     rdpa_cpu_int_clear(rdpa_cpu_wlan0, qidx);
-
-    /*Atomically set the queue bit on*/
-    set_bit(qidx, &wfd_objects[wfdIdx].wfd_rx_work_avail);
-
-    /* Call the RDPA receiving packets handler (thread or tasklet) */
-    WFD_WAKEUP_RXWORKER(wfdIdx);
+    if (wfd_rx_queue_active(wfd_objects[wfdIdx].isValid,
+            wfd_objects[wfdIdx].wfd_queue_mask, qidx,
+            WFD_NUM_QUEUE_SUPPORTED))
+    {
+        set_bit(qidx, &wfd_objects[wfdIdx].wfd_rx_work_avail);
+        WFD_WAKEUP_RXWORKER(wfdIdx);
+    }
+    WFD_IRQ_UNLOCK(wfdIdx, flags);
 }
 
 static inline void wfd_buff_cache_prefetch(WFD_RING_S *pDescriptor)
@@ -341,169 +350,8 @@ wfd_skb_headerinit(struct sk_buff *skb, void *data, uint32_t len)
     bdmf_skb_headerinit(skb, data, len); /* Fast BPM SKB attach to BPM buf */
 }
 
-static inline int wfd_delete_runner_ring(int ring_id)
-{
-    WFD_RING_S *pDescriptor;
-    uint32_t entry;
-    volatile CPU_RX_DESCRIPTOR *pTravel;
-
-    pDescriptor = &wfd_rings[ring_id];
-    if (!pDescriptor->ring_size)
-    {
-        printk("ERROR:deleting ring_id %d which does not exists!", ring_id);
-        return -1;
-    }
-
-    /* free the data buffers in ring */
-    if (pDescriptor->base)
-    {
-        pTravel = (volatile CPU_RX_DESCRIPTOR *)pDescriptor->base;
-        for (entry = 0; entry < pDescriptor->ring_size; entry++)
-        {
-            if (pTravel->word2)
-            {
-#ifdef _BYTE_ORDER_LITTLE_ENDIAN_
-                /* little-endian ownership is MSb of LSB */
-                pTravel->word2 = swap4bytes(pTravel->word2 | 0x80);
-#else
-                /* big-endian ownership is MSb of MSB */
-                pTravel->ownership = OWNERSHIP_HOST;
-#endif
-                bdmf_sysb_databuf_free((void *)phys_to_virt((phys_addr_t)pTravel->host_buffer_data_pointer), 0);
-                pTravel->word2 = 0;
-            }
-            pTravel++;
-        }
-    }
-
-    /* free any buffers in buff_cache */
-    while (pDescriptor->buff_cache_idx >= 0)
-    {
-        bdmf_sysb_databuf_free(pDescriptor->buff_cache[pDescriptor->buff_cache_idx--], 0);
-    }
-
-    /* free buff_cache */
-    if (pDescriptor->buff_cache)
-        kfree(pDescriptor->buff_cache);
-
-    /* delete the ring of descriptors */
-    if (pDescriptor->base)
-        rdp_mm_aligned_free((void *)NONCACHE_TO_CACHE(pDescriptor->base),
-                            pDescriptor->ring_size * sizeof(CPU_RX_DESCRIPTOR));
-
-    pDescriptor->ring_size = 0;
-
-    return 0;
-}
-
-static inline int wfd_create_runner_ring(int ring_id, uint32_t size, uint32_t **ring_base)
-{
-    WFD_RING_S *pDescriptor;
-    volatile CPU_RX_DESCRIPTOR *pTravel;
-    uint32_t entry;
-    void *dataPtr = NULL;
-    bdmf_phys_addr_t phy_addr;
-
-    if (ring_id >= WFD_NUM_QUEUE_SUPPORTED)
-    {
-        printk("ERROR:wfd ring_id %d out of range(%d)", ring_id,
-                        (int)(sizeof(wfd_rings)/sizeof(WFD_RING_S)));
-        return -1;
-    }
-
-    pDescriptor = &wfd_rings[ring_id];
-    if (pDescriptor->ring_size)
-    {
-        printk("ERROR: ring_id %d already exists! must be deleted first", ring_id);
-        return -1;
-    }
-
-    printk("Creating CPU ring for queue number %d with %d packets descriptor=0x%p\n ", ring_id, size, pDescriptor);
-
-    /* set ring parameters */
-    pDescriptor->ring_size = size;
-    pDescriptor->descriptor_size = sizeof(CPU_RX_DESCRIPTOR);
-    pDescriptor->skbs_cache      = (struct sk_buff *) NULL;
-    pDescriptor->skbs_cache_cnt  = 0;
-    pDescriptor->buff_cache_idx  = (int)-1;
-
-
-    /* TODO:update the comment  allocate buff_cache which helps to reduce the overhead of when
-     * allocating data buffers to ring descriptor */
-    pDescriptor->buff_cache = (void **)(kmalloc(sizeof(void *) * WFD_RING_MAX_BUFF_IN_CACHE, GFP_ATOMIC));
-    if (pDescriptor->buff_cache == NULL)
-    {
-        printk("failed to allocate memory for cache of data buffers \n");
-        return -1;
-    }
-
-    /* allocate ring descriptors - must be non-cacheable memory */
-    pDescriptor->base = (CPU_RX_DESCRIPTOR *)rdp_mm_aligned_alloc(sizeof(CPU_RX_DESCRIPTOR) * size, &phy_addr);
-    if (pDescriptor->base == NULL)
-    {
-        printk("failed to allocate memory for ring descriptor\n");
-        wfd_delete_runner_ring(ring_id);
-        return -1;
-    }
-
-
-    /*initialize descriptors*/
-    for (pTravel = (volatile CPU_RX_DESCRIPTOR *)pDescriptor->base, entry = 0; entry < size; pTravel++ , entry++)
-    {
-        memset((void *)pTravel, 0, sizeof(*pTravel));
-
-        /* allocate actual packet in DDR */
-        dataPtr = wfd_databuf_alloc(pDescriptor);
-        if (dataPtr)
-        {
-#if defined(CONFIG_BCM963138) || defined(_BCM963138_) || defined(CONFIG_BCM963148) || defined(_BCM963148_) || defined(CONFIG_BCM94908) || defined(_BCM94908_)
-            /* since ARM is little edian and runner is big endian we need to
-             * byte swap the dataPtr.
-             * this statementchange sthe owebrship bit to runner and swaps the bytes
-             * and assigns to runner
-             */
-            pTravel->word2 = swap4bytes((uint32_t)virt_to_phys(dataPtr)) & ~0x80;
-#else
-            pTravel->host_buffer_data_pointer    = VIRT_TO_PHYS(dataPtr);
-            pTravel->ownership                   = OWNERSHIP_RUNNER;
-#endif
-        }
-        else
-        {
-            pTravel->host_buffer_data_pointer = 0;
-            printk("failed to allocate packet map entry=%d\n", entry);
-            wfd_delete_runner_ring(ring_id);
-            return -1;
-        }
-    }
-
-    /*set the ring header to the first entry*/
-    pDescriptor->head = pDescriptor->base;
-
-    /*using pointer arithmetics calculate the end of the ring*/
-    pDescriptor->end = pDescriptor->base + size;
-
-    *ring_base = (uint32_t *)(uintptr_t)phy_addr;
-
-    return 0;
-}
-
-static inline int wfd_ring_get_queued(uint32_t ring_id)
-{
-    WFD_RING_S *pDescriptor = &wfd_rings[ring_id];
-    volatile CPU_RX_DESCRIPTOR *pTravel = pDescriptor->base;
-    volatile CPU_RX_DESCRIPTOR *pEnd = pDescriptor->end;
-    uint32_t packets     = 0;
-
-    while (pTravel != pEnd)
-    {
-        uint32_t ownership = (swap4bytes(pTravel->word2) & 0x80000000) ? 1 : 0;
-        packets += (ownership == OWNERSHIP_HOST) ? 1 : 0;
-        pTravel++;
-    }
-
-    return packets;
-}
+static void wfd_rxq_stat(int qid, extern_rxq_stat_t *stat, bdmf_boolean clear);
+#include "runner_wfd_ring_lifecycle.h"
 
 static void wfd_rxq_stat(int qid, extern_rxq_stat_t *stat, bdmf_boolean clear)
 {
@@ -512,6 +360,8 @@ static void wfd_rxq_stat(int qid, extern_rxq_stat_t *stat, bdmf_boolean clear)
     if (stat)
     {
         memset(stat, 0, sizeof(extern_rxq_stat_t));
+        if (qidx < 0 || qidx >= WFD_NUM_QUEUE_SUPPORTED)
+            return;
 
         stat->received += gs_count_rx_pkt[qidx];
         stat->dropped += gs_count_no_buffers[qidx] + gs_count_no_skbs[qidx] +
@@ -560,49 +410,6 @@ static inline int wfd_get_maxQIdx(int wfd_idx)
        WFD_IDX 0 - qidx0-lowprio, qidx1-hiprio
        WFD_IDX 1 - qidx2-lowprio, qidx3-hiprio */
     return ((wfd_idx * WFD_NUM_QUEUES_PER_WFD_INST) + (WFD_NUM_QUEUES_PER_WFD_INST - 1));
-}
-
-static inline int wfd_config_rx_queue(int wfd_idx, int qid, uint32_t qsize,
-                                      enumWFD_WlFwdHookType eFwdHookType)
-{
-    rdpa_cpu_rxq_cfg_t rxq_cfg;
-    uint32_t *ring_base = NULL;
-    int rc = 0;
-    bdmf_sysb_type qsysb_type = bdmf_sysb_skb;
-    int qidx = qid - first_pci_queue;
-
-    if (eFwdHookType == WFD_WL_FWD_HOOKTYPE_FKB)
-    {
-        qsysb_type = bdmf_sysb_fkb;
-    }
-
-    /* Read current configuration, set new drop threshold and ISR and write back. */
-    bdmf_lock();
-    rc = rdpa_cpu_rxq_cfg_get(rdpa_cpu_obj, qid, &rxq_cfg);
-    if (rc)
-        goto unlock_exit;
-
-    if (qsize) {
-        rc = wfd_create_runner_ring(qidx, qsize, &ring_base);
-        if (rc)
-            goto unlock_exit;
-    } else {
-        wfd_delete_runner_ring(qidx);
-    }
-
-    rxq_cfg.size = WFD_WLAN_QUEUE_MAX_SIZE;
-    rxq_cfg.isr_priv = qidx;
-    rxq_cfg.rx_isr = qsize ? wfd_dev_rx_isr_callback : 0;
-    rxq_cfg.ring_head = ring_base;
-    rxq_cfg.ic_cfg.ic_enable = qsize ? true : false;
-    rxq_cfg.ic_cfg.ic_timeout_us = WFD_INTERRUPT_COALESCING_TIMEOUT_US;
-    rxq_cfg.ic_cfg.ic_max_pktcnt = WFD_INTERRUPT_COALESCING_MAX_PKT_CNT;
-    rxq_cfg.rxq_stat = wfd_rxq_stat;
-    rc = rdpa_cpu_rxq_cfg_set(rdpa_cpu_obj, qid, &rxq_cfg);
-
-unlock_exit:
-    bdmf_unlock();
-    return rc;
 }
 
 #if defined(CONFIG_BCM96838) || defined(CONFIG_BCM96848) || defined(CONFIG_BCM96858)
@@ -711,7 +518,7 @@ static inline void reset_current_descriptor(WFD_RING_S *pDescriptor, void *p_dat
 static inline uint32_t
 _wfd_bulk_fkb_get(uint32_t qid, uint32_t budget, wfd_object_t *wfd_p, void **rx_pkts)
 {
-    WFD_RING_S *pDescriptor = &wfd_rings[qid - first_pci_queue];
+    WFD_RING_S *pDescriptor;
     volatile CPU_RX_DESCRIPTOR *pTravel;
     CPU_RX_DESCRIPTOR rxDesc;
     FkBuff_t *fkb_p;
@@ -726,6 +533,13 @@ _wfd_bulk_fkb_get(uint32_t qid, uint32_t budget, wfd_object_t *wfd_p, void **rx_
     pktlist_context_t *dhd_pktlist_context = wfd_pktlist_context->peer;
     uint16_t pktfwd_key = 0;
 #endif /* BCM_PKTFWD */
+
+    if (qid < first_pci_queue || qid - first_pci_queue >= WFD_NUM_QUEUE_SUPPORTED)
+        return 0;
+    pDescriptor = &wfd_rings[qid - first_pci_queue];
+    if (unlikely(!pDescriptor->head || !pDescriptor->base ||
+            !pDescriptor->buff_cache || !pDescriptor->ring_size))
+        return 0;
 
     wfd_buff_cache_prefetch(pDescriptor); /* buff_cache */
 
@@ -1066,7 +880,7 @@ static inline bool ucast_should_drop_skb(wfd_object_t *wfd_p,
 static inline uint32_t _wfd_bulk_skb_get(unsigned long qid,
         unsigned long budget, wfd_object_t *wfd_p, void **rx_pkts)
 {
-    WFD_RING_S *pDescriptor = &wfd_rings[qid - first_pci_queue];
+    WFD_RING_S *pDescriptor;
     volatile CPU_RX_DESCRIPTOR *pTravel;
     CPU_RX_DESCRIPTOR rxDesc; /* uncached pTravel copy into stack rxDesc */
     struct sk_buff *skb_p;
@@ -1083,6 +897,13 @@ static inline uint32_t _wfd_bulk_skb_get(unsigned long qid,
     uint16_t pkt_prio, pkt_dest;
     pktlist_context_t *pktlist_context = wfd_p->pktlist_context_p;
 #endif
+
+    if (qid < first_pci_queue || qid - first_pci_queue >= WFD_NUM_QUEUE_SUPPORTED)
+        return 0;
+    pDescriptor = &wfd_rings[qid - first_pci_queue];
+    if (unlikely(!pDescriptor->head || !pDescriptor->base ||
+            !pDescriptor->buff_cache || !pDescriptor->ring_size))
+        return 0;
 
     wfd_buff_cache_prefetch(pDescriptor); /* buff_cache */
 
@@ -1411,6 +1232,9 @@ error_handling:
 
 static inline int wfd_queue_not_empty(int radio, long qid, int qidx)
 {
+    if (qidx < 0 || qidx >= WFD_NUM_QUEUE_SUPPORTED ||
+        !wfd_rings[qidx].head)
+        return 0;
     return rdpa_cpu_ring_not_empty(wfd_rings[qidx].head);
 }
 

@@ -37,6 +37,10 @@ rm -f "$repo_root/release/src/router/zlib/stamp-h1"
 
 make -C "$sdk_dir" rt-ax86u
 
+# Fail packaging if the build or root filesystem still contains prebuilt WFD.
+wfd_verification="$(bash "$repo_root/tools/ci/verify-ax86u-wfd.sh")"
+printf '%s\n' "$wfd_verification"
+
 image_dir="$sdk_dir/image"
 if [[ ! -d "$image_dir" ]]; then
 	echo "Build completed without creating $image_dir" >&2
@@ -72,6 +76,14 @@ fi
 
 rm -rf "$output_dir"
 mkdir -p "$output_dir"
+
+{
+	printf 'Build revision: %s\n' "$BUILDREV"
+	printf '%s\n' "$wfd_verification"
+} > "$output_dir/wfd-build-verification.txt"
+cp "$repo_root/tools/ci/RT-AX86U-RX-OFFLOAD.md" \
+	"$repo_root/tools/ci/RT-AX86U-RRM-CRASH.md" \
+	"$repo_root/tools/ci/RT-AX86U-WFD-LIFECYCLE.md" "$output_dir/"
 
 package_temp="$(mktemp -d)"
 checksum_file="$package_temp/sha256sum.sha256"

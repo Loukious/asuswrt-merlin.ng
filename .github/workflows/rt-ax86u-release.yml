@@ -79,6 +79,20 @@ jobs:
           git update-ref refs/heads/actions "$GITHUB_SHA"
           git symbolic-ref HEAD refs/heads/actions
 
+      - name: Test wireless stability policies
+        working-directory: asuswrt-merlin.ng
+        run: |
+          set -Eeuo pipefail
+          cc -std=c99 -Wall -Wextra -Werror -O2 \
+            tools/ci/test-ax86u-rxoffload-policy.c \
+            -o "$RUNNER_TEMP/test-ax86u-rxoffload-policy"
+          "$RUNNER_TEMP/test-ax86u-rxoffload-policy"
+          cc -std=gnu99 -Wall -Wextra -Werror -Wno-unused-parameter \
+            -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer \
+            tools/ci/test-wfd-rx-lifecycle.c \
+            -o "$RUNNER_TEMP/test-wfd-rx-lifecycle"
+          "$RUNNER_TEMP/test-wfd-rx-lifecycle"
+
       - name: Check out Broadcom toolchains
         uses: actions/checkout@v7
         with:
