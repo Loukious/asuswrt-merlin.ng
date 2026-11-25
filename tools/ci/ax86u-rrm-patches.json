@@ -1,0 +1,327 @@
+{
+  "version": 1,
+  "target": "release/src-rt-5.02L.07p2axhnd/router-sysdep.rt-ax86u/hnd_extra/prebuilt/wl.o",
+  "original_sha256": "87992acf632aeb2bf5906d91eedb7e22efb84d7492503e6d732dc18bc2b4b9c4",
+  "elf_machine": 183,
+  "byte_order": "little",
+  "rationale": "Guard selected and scanned BSS information pointers; unpublish owned failed allocations before original mfree; unpublish normal frees before original mfree. Preserve existing driver locking contract.",
+  "patches": [
+    {
+      "name": "alloc_rollback",
+      "symbol": "wlc_bsscfg_alloc",
+      "symbol_value": 2594104,
+      "offset": 116,
+      "original": "97ffff49",
+      "replacement": "94000003",
+      "rationale": "Clear only this failed allocation's published slot, then tail-call original mfree and reuse the complete epilogue."
+    },
+    {
+      "name": "alloc_common_epilogue",
+      "symbol": "wlc_bsscfg_alloc",
+      "symbol_value": 2594104,
+      "offset": 124,
+      "original": "f94023f9",
+      "replacement": "14000013",
+      "rationale": "Clear only this failed allocation's published slot, then tail-call original mfree and reuse the complete epilogue."
+    },
+    {
+      "name": "alloc_slot_table",
+      "symbol": "wlc_bsscfg_alloc",
+      "symbol_value": 2594104,
+      "offset": 128,
+      "original": "a94153f3",
+      "replacement": "f9417402",
+      "rationale": "Clear only this failed allocation's published slot, then tail-call original mfree and reuse the complete epilogue."
+    },
+    {
+      "name": "alloc_slot_owner",
+      "symbol": "wlc_bsscfg_alloc",
+      "symbol_value": 2594104,
+      "offset": 132,
+      "original": "a9425bf5",
+      "replacement": "f874d843",
+      "rationale": "Clear only this failed allocation's published slot, then tail-call original mfree and reuse the complete epilogue."
+    },
+    {
+      "name": "alloc_compare_owner",
+      "symbol": "wlc_bsscfg_alloc",
+      "symbol_value": 2594104,
+      "offset": 136,
+      "original": "a94363f7",
+      "replacement": "eb01007f",
+      "rationale": "Clear only this failed allocation's published slot, then tail-call original mfree and reuse the complete epilogue."
+    },
+    {
+      "name": "alloc_preserve_other_owner",
+      "symbol": "wlc_bsscfg_alloc",
+      "symbol_value": 2594104,
+      "offset": 140,
+      "original": "a8c57bfd",
+      "replacement": "54ffe861",
+      "rationale": "Clear only this failed allocation's published slot, then tail-call original mfree and reuse the complete epilogue."
+    },
+    {
+      "name": "alloc_unpublish",
+      "symbol": "wlc_bsscfg_alloc",
+      "symbol_value": 2594104,
+      "offset": 144,
+      "original": "d65f03c0",
+      "replacement": "f834d85f",
+      "rationale": "Clear only this failed allocation's published slot, then tail-call original mfree and reuse the complete epilogue."
+    },
+    {
+      "name": "alloc_original_mfree",
+      "symbol": "wlc_bsscfg_alloc",
+      "symbol_value": 2594104,
+      "offset": 148,
+      "original": "d503201f",
+      "replacement": "17ffff41",
+      "rationale": "Clear only this failed allocation's published slot, then tail-call original mfree and reuse the complete epilogue."
+    },
+    {
+      "name": "free_slot_table",
+      "symbol": "wlc_bsscfg_free",
+      "symbol_value": 2594344,
+      "offset": 124,
+      "original": "97ffff0b",
+      "replacement": "f9417682",
+      "rationale": "Remove table publication before calling original mfree; preserve existing free arguments and epilogue."
+    },
+    {
+      "name": "free_unpublish",
+      "symbol": "wlc_bsscfg_free",
+      "symbol_value": 2594344,
+      "offset": 128,
+      "original": "f9417680",
+      "replacement": "f835d85f",
+      "rationale": "Remove table publication before calling original mfree; preserve existing free arguments and epilogue."
+    },
+    {
+      "name": "free_original_mfree",
+      "symbol": "wlc_bsscfg_free",
+      "symbol_value": 2594344,
+      "offset": 132,
+      "original": "f835d81f",
+      "replacement": "97ffff09",
+      "rationale": "Remove table publication before calling original mfree; preserve existing free arguments and epilogue."
+    },
+    {
+      "name": "rrm_selected_guard_mask_0",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3552,
+      "original": "52800380",
+      "replacement": "f9405a93",
+      "rationale": "Reject missing selected BSS information before mutation; initialize the same five masks and reuse the original mask loop."
+    },
+    {
+      "name": "rrm_selected_guard_mask_1",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3556,
+      "original": "f9405a93",
+      "replacement": "b5000073",
+      "rationale": "Reject missing selected BSS information before mutation; initialize the same five masks and reuse the original mask loop."
+    },
+    {
+      "name": "rrm_selected_guard_mask_2",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3560,
+      "original": "390213a0",
+      "replacement": "12800300",
+      "rationale": "Reject missing selected BSS information before mutation; initialize the same five masks and reuse the original mask loop."
+    },
+    {
+      "name": "rrm_selected_guard_mask_3",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3564,
+      "original": "d2800000",
+      "replacement": "17fffc9f",
+      "rationale": "Reject missing selected BSS information before mutation; initialize the same five masks and reuse the original mask loop."
+    },
+    {
+      "name": "rrm_selected_guard_mask_4",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3568,
+      "original": "528001e1",
+      "replacement": "528bee60",
+      "rationale": "Reject missing selected BSS information before mutation; initialize the same five masks and reuse the original mask loop."
+    },
+    {
+      "name": "rrm_selected_guard_mask_5",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3572,
+      "original": "52800be2",
+      "replacement": "72a1e000",
+      "rationale": "Reject missing selected BSS information before mutation; initialize the same five masks and reuse the original mask loop."
+    },
+    {
+      "name": "rrm_selected_guard_mask_6",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3576,
+      "original": "39020fa1",
+      "replacement": "b90083a0",
+      "rationale": "Reject missing selected BSS information before mutation; initialize the same five masks and reuse the original mask loop."
+    },
+    {
+      "name": "rrm_selected_guard_mask_7",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3580,
+      "original": "52800e63",
+      "replacement": "52800380",
+      "rationale": "Reject missing selected BSS information before mutation; initialize the same five masks and reuse the original mask loop."
+    },
+    {
+      "name": "rrm_selected_guard_mask_8",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3584,
+      "original": "38606b81",
+      "replacement": "390213a0",
+      "rationale": "Reject missing selected BSS information before mutation; initialize the same five masks and reuse the original mask loop."
+    },
+    {
+      "name": "rrm_selected_guard_mask_9",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3588,
+      "original": "390207a2",
+      "replacement": "52800e63",
+      "rationale": "Reject missing selected BSS information before mutation; initialize the same five masks and reuse the original mask loop."
+    },
+    {
+      "name": "rrm_selected_guard_mask_10",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3592,
+      "original": "52800e62",
+      "replacement": "d2800000",
+      "rationale": "Reject missing selected BSS information before mutation; initialize the same five masks and reuse the original mask loop."
+    },
+    {
+      "name": "rrm_selected_guard_mask_11",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3596,
+      "original": "0a010041",
+      "replacement": "14000007",
+      "rationale": "Reject missing selected BSS information before mutation; initialize the same five masks and reuse the original mask loop."
+    },
+    {
+      "name": "rrm_selected_guard_mask_12",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3600,
+      "original": "38206b81",
+      "replacement": "d503201f",
+      "rationale": "Reject missing selected BSS information before mutation; initialize the same five masks and reuse the original mask loop."
+    },
+    {
+      "name": "rrm_selected_guard_mask_13",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3604,
+      "original": "91000400",
+      "replacement": "d503201f",
+      "rationale": "Reject missing selected BSS information before mutation; initialize the same five masks and reuse the original mask loop."
+    },
+    {
+      "name": "rrm_selected_guard_mask_14",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3608,
+      "original": "390203a3",
+      "replacement": "d503201f",
+      "rationale": "Reject missing selected BSS information before mutation; initialize the same five masks and reuse the original mask loop."
+    },
+    {
+      "name": "rrm_selected_guard_mask_15",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3612,
+      "original": "39020bbf",
+      "replacement": "d503201f",
+      "rationale": "Reject missing selected BSS information before mutation; initialize the same five masks and reuse the original mask loop."
+    },
+    {
+      "name": "rrm_selected_guard_mask_16",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3616,
+      "original": "f100141f",
+      "replacement": "d503201f",
+      "rationale": "Reject missing selected BSS information before mutation; initialize the same five masks and reuse the original mask loop."
+    },
+    {
+      "name": "rrm_selected_guard_mask_17",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3620,
+      "original": "54000120",
+      "replacement": "d503201f",
+      "rationale": "Reject missing selected BSS information before mutation; initialize the same five masks and reuse the original mask loop."
+    },
+    {
+      "name": "rrm_scan_post_index",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3824,
+      "original": "f9400001",
+      "replacement": "f8408401",
+      "rationale": "Compact cursor load/increment to add a missing information-pointer check before the capability read."
+    },
+    {
+      "name": "rrm_scan_config_guard",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3828,
+      "original": "91002000",
+      "replacement": "b40000a1",
+      "rationale": "Compact cursor load/increment to add a missing information-pointer check before the capability read."
+    },
+    {
+      "name": "rrm_scan_current_bss_load",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3832,
+      "original": "b4000081",
+      "replacement": "f9405821",
+      "rationale": "Compact cursor load/increment to add a missing information-pointer check before the capability read."
+    },
+    {
+      "name": "rrm_scan_current_bss_guard",
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "offset": 3836,
+      "original": "f9405821",
+      "replacement": "b4000061",
+      "rationale": "Compact cursor load/increment to add a missing information-pointer check before the capability read."
+    }
+  ],
+  "function_checks": [
+    {
+      "symbol": "wlc_bsscfg_alloc",
+      "symbol_value": 2594104,
+      "size": 236,
+      "sha256": "29a94446f5a34d92f7b667084c3da35305df44366f9f041b4d37e3fe4d9d9073"
+    },
+    {
+      "symbol": "wlc_bsscfg_free",
+      "symbol_value": 2594344,
+      "size": 188,
+      "sha256": "5e1b803f3d2f52596089288702c70672ad9dec45ff7dc4c92591168371b7398d"
+    },
+    {
+      "symbol": "wlc_rrm_doiovar",
+      "symbol_value": 3118232,
+      "size": 5204,
+      "sha256": "de3a34f959de701e9210b578dd58d91bef26ef2bcca27475243d67dd9b43d0ac"
+    }
+  ]
+}

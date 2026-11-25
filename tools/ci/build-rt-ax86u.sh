@@ -40,6 +40,8 @@ make -C "$sdk_dir" rt-ax86u
 # Fail packaging if the build or root filesystem still contains prebuilt WFD.
 wfd_verification="$(bash "$repo_root/tools/ci/verify-ax86u-wfd.sh")"
 printf '%s\n' "$wfd_verification"
+driver_verification="$(python3 "$repo_root/tools/ci/verify-ax86u-driver-fixes.py")"
+printf '%s\n' "$driver_verification"
 
 image_dir="$sdk_dir/image"
 if [[ ! -d "$image_dir" ]]; then
@@ -81,6 +83,7 @@ mkdir -p "$output_dir"
 	printf 'Build revision: %s\n' "$BUILDREV"
 	printf '%s\n' "$wfd_verification"
 } > "$output_dir/wfd-build-verification.txt"
+printf '%s\n' "$driver_verification" > "$output_dir/driver-fix-verification.json"
 cp "$repo_root/tools/ci/RT-AX86U-RX-OFFLOAD.md" \
 	"$repo_root/tools/ci/RT-AX86U-RRM-CRASH.md" \
 	"$repo_root/tools/ci/RT-AX86U-WFD-LIFECYCLE.md" \

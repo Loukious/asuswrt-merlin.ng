@@ -3,6 +3,11 @@ name: Build RT-AX86U firmware
 on:
   workflow_dispatch:
     inputs:
+      checks_only:
+        description: Run regression checks without building a firmware image
+        required: false
+        default: false
+        type: boolean
       release_tag:
         description: Optional tag to create or update a GitHub release
         required: false
@@ -42,7 +47,7 @@ jobs:
             liblzo2-dev libncurses5 libncurses5-dev libncurses5:i386 libproxy-dev \
             libltdl-dev libslang2-dev libssl-dev libtool libtool-bin libvorbis-dev \
             libxml-parser-perl libxml2-dev liblzma-dev lzma lzma-dev m4 make \
-            mtd-utils patch perl pkg-config python2 python3 python-is-python2 qemu-user \
+            mtd-utils patch perl pkg-config python2 python3 python3-unicorn python-is-python2 qemu-user \
             rsync sharutils shtool subversion tar texinfo u-boot-tools unzip \
             uuid-dev xxd xsltproc zip zlib1g-dev
           apt-get clean
@@ -85,6 +90,8 @@ jobs:
           set -Eeuo pipefail
           python3 tools/ci/check-wfd-bdmf-headers.py
           python3 tools/ci/check-ax86u-runner-header.py
+          python3 tools/ci/test-ax86u-rrm-patches.py
+          python3 tools/ci/test-ax86u-rdpa-patches.py tools/ci/patch-ax86u-drivers.py
           cc -std=c99 -Wall -Wextra -Werror -O2 \
             tools/ci/test-ax86u-rxoffload-policy.c \
             -o "$RUNNER_TEMP/test-ax86u-rxoffload-policy"
@@ -96,6 +103,7 @@ jobs:
           "$RUNNER_TEMP/test-wfd-rx-lifecycle"
 
       - name: Check out Broadcom toolchains
+        if: ${{ inputs.checks_only != true }}
         uses: actions/checkout@v7
         with:
           repository: RMerl/am-toolchains
@@ -109,11 +117,13 @@ jobs:
             brcm-arm-hnd/crosstools-aarch64-gcc-5.5-linux-4.1-glibc-2.26-binutils-2.28.1
 
       - name: Configure toolchains
+        if: ${{ inputs.checks_only != true }}
         run: |
           rm -rf /opt/toolchains
           ln -s "$GITHUB_WORKSPACE/am-toolchains/brcm-arm-hnd" /opt/toolchains
 
       - name: Verify Runner descriptor with the firmware compiler
+        if: ${{ inputs.checks_only != true }}
         working-directory: asuswrt-merlin.ng
         run: |
           set -Eeuo pipefail
@@ -126,6 +136,7 @@ jobs:
           qemu-aarch64 "$RUNNER_TEMP/test-ax86u-runner-descriptor"
 
       - name: Build and package firmware
+        if: ${{ inputs.checks_only != true }}
         env:
           TOOLCHAIN_BASE: /opt/toolchains
         run: |
@@ -138,6 +149,7 @@ jobs:
             "$GITHUB_WORKSPACE/dist/rt-ax86u"
 
       - name: Upload firmware artifact
+        if: ${{ inputs.checks_only != true }}
         uses: actions/upload-artifact@v7
         with:
           name: rt-ax86u-firmware
@@ -147,7 +159,7 @@ jobs:
           retention-days: 14
 
   release:
-    if: ${{ github.event_name == 'push' || inputs.release_tag != '' }}
+    if: ${{ inputs.checks_only != true && (github.event_name == 'push' || inputs.release_tag != '') }}
     needs: build
     runs-on: ubuntu-24.04
     permissions:

@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "target": "release/src-rt-5.02L.07p2axhnd/router-sysdep.rt-ax86u/hnd_extra/prebuilt/rdpa.o",
+  "original_sha256": "fa7c264e0ac174cd3da9c1fdaaeb1cbdbf692681d8740e92c31a9654ba5f4662",
+  "elf_machine": 183,
+  "byte_order": "little",
+  "function_checks": [
+    {
+      "symbol": "rdd_dhd_rx_post_reinit",
+      "symbol_value": 229168,
+      "size": 64,
+      "sha256": "7ad45d6efb2852b00165843a5e86d081b78d717b0765b54b2d8f2555b3129d1a"
+    }
+  ],
+  "patches": [
+    {
+      "name": "preserve_rx_post_reinit_error",
+      "symbol": "rdd_dhd_rx_post_reinit",
+      "symbol_value": 229168,
+      "offset": 52,
+      "original": "52800000",
+      "replacement": "d503201f",
+      "rationale": "Replace the unconditional MOV w0,0 with NOP so the existing epilogue returns the status from RX-post uninitialization or initialization. This fixes discarded recovery errors while preserving the success path and ABI; it does not establish or repair the initiating RX-completion stall."
+    }
+  ]
+}

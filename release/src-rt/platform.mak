@@ -550,6 +550,12 @@ define platformKernelConfig
 				fi; \
 				cp $(TOP_PLATFORM)/hnd_extra/prebuilt/bdmf.o $(HND_SRC)/rdp/projects/WL4908/target/bdmf/bdmf$(PRBM_EXT).o ; \
 				cp $(TOP_PLATFORM)/hnd_extra/prebuilt/rdpa.o $(HND_SRC)/rdp/projects/WL4908/target/rdpa/rdpa$(PRBM_EXT).o ; \
+				if [ "$(WFD_BUILD_FROM_SOURCE)" = "1" ]; then \
+					python3 $(HND_SRC)/../../tools/ci/patch-ax86u-drivers.py \
+						--spec $(HND_SRC)/../../tools/ci/ax86u-rdpa-patches.json \
+						--input $(TOP_PLATFORM)/hnd_extra/prebuilt/rdpa.o \
+						--output $(HND_SRC)/rdp/projects/WL4908/target/rdpa/rdpa$(PRBM_EXT).o || exit 1; \
+				fi; \
 				cp $(TOP_PLATFORM)/hnd_extra/prebuilt/rdpa_gpl.o $(HND_SRC)/rdp/projects/WL4908/target/rdpa_gpl/rdpa_gpl$(PRBM_EXT).o ; \
 				cp $(TOP_PLATFORM)/hnd_extra/prebuilt/rdpa_usr.o $(HND_SRC)/rdp/projects/WL4908/target/rdpa_user/rdpa_usr$(PRBM_EXT).o ; \
 				cp $(TOP_PLATFORM)/hnd_extra/prebuilt/unimac_drv_impl1.o $(HND_SRC)/shared/opensource/drv/unimac/ ; \
@@ -642,6 +648,13 @@ define platformKernelConfig
 					cp $(TOP_PLATFORM)/hnd_extra/prebuilt/igs.o $(HND_SRC)/router-sysdep/hnd_igs/prebuilt/ ; \
 					cp $(TOP_PLATFORM)/hnd_extra/prebuilt/wl.o $(HND_SRC)/router-sysdep/hnd_wl/prebuilt/wl_apsta.o ; \
 					cp $(TOP_PLATFORM)/hnd_extra/prebuilt/wl.o $(HND_SRC)/router-sysdep/hnd_wl/prebuilt/ ; \
+					if [ "$(WFD_BUILD_FROM_SOURCE)" = "1" ]; then \
+						python3 $(HND_SRC)/../../tools/ci/patch-ax86u-drivers.py \
+							--spec $(HND_SRC)/../../tools/ci/ax86u-rrm-patches.json \
+							--input $(TOP_PLATFORM)/hnd_extra/prebuilt/wl.o \
+							--output $(HND_SRC)/router-sysdep/hnd_wl/prebuilt/wl.o || exit 1; \
+						cp $(HND_SRC)/router-sysdep/hnd_wl/prebuilt/wl.o $(HND_SRC)/router-sysdep/hnd_wl/prebuilt/wl_apsta.o || exit 1; \
+					fi; \
 					cp $(TOP_PLATFORM)/hnd_extra/prebuilt/bcm_pcie_hcd.o $(HND_SRC)/bcmdrivers/opensource/bus/pci/host/impl1/bcm_pcie_hcd$(PRBM_EXT).o ; \
 					cp $(TOP_PLATFORM)/hnd_extra/prebuilt/board_button.o $(HND_SRC)/bcmdrivers/opensource/char/board/bcm963xx/impl1/ ; \
 					cp $(TOP_PLATFORM)/hnd_extra/prebuilt/board_dg.o $(HND_SRC)/bcmdrivers/opensource/char/board/bcm963xx/impl1/ ; \

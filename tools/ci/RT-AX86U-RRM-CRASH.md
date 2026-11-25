@@ -1,10 +1,15 @@
-# RT-AX86U RRM crash: evidence and remaining repair boundary
+# RT-AX86U RRM crash: instruction repair and evidence
 
 The recorded `wlconf` kernel crash is an unsafe RRM capability setter in the
 proprietary native `wl` driver. It is separate from the 5 GHz dongle's HWA RX
 completion assertion and the WFD receive-worker NULL dereference. The RX
 offload workaround and WFD source changes must not be described as repairing
-this RRM crash. No RC shutdown replacement or RRM suppression is included.
+this RRM crash. The separate RRM repair is specified in
+`tools/ci/ax86u-rrm-patches.json`: it corrects instructions in the existing
+relocatable driver object. No RC shutdown replacement or RRM suppression is
+included. GitHub Actions execution and target-build verification are pending;
+the plan and regression source are not evidence of a passing build or hardware
+validation.
 
 ## Recorded evidence and artifact identity
 
@@ -150,16 +155,98 @@ present as editable target sources. The upstream candidate blob
 `wlc_rrm_doiovar` still has the same unguarded pointer chain at `+0xefc/+0xf00`.
 Replacing this blob alone is not an RRM NULL-guard fix.
 
-The required repair belongs inside the driver's lifecycle contract:
-unpublish failed/freed configurations before reclaiming their information,
-roll back publication on every allocation/initialization failure, and validate
-information pointers while holding the appropriate lifetime protection in
-both the selected-BSS and all-BSS RRM paths. A NULL check on an already freed
-configuration is insufficient without fixing ownership.
+The missing private C sources prevent a conventional source edit. They do not
+prevent a pinned instruction correction in the supplied ELF object. The
+manifest modifies 33 four-byte instructions across three existing functions,
+without changing ELF geometry, symbol values, function sizes, or relocation
+tables. It checks the original whole-file digest, function digests and original
+words before applying the replacement words. It must reject another driver
+version rather than infer compatible offsets.
 
-Validation of a future driver repair must cover failed post-publication
-allocation, initialization rollback, zero and nonzero RRM changes, an orphaned
-slot, and RRM queries/updates interleaved with VIF teardown. It must compile
-and exercise the actual replacement module in GitHub Actions, then separately
-validate it on hardware. No local firmware build, binary patch, router change,
-or fabricated passing RRM regression test was performed for this finding.
+## Exact instruction repair
+
+The selected-BSS guard uses the existing setter's mask-prefix space
+(`0x2fa278`–`0x2fa2bc`). It loads the information pointer, returns
+`BCME_NOTREADY` (-25) through the original epilogue if NULL, and otherwise
+initializes the same five mask bytes (`73 5f 00 0f 1c`) before entering the
+original general masking loop at `0x2fa2c0`. This checks before parameter,
+stored-capability or extended-capability mutation. Valid zero and nonzero RRM
+configuration retains the original setter behavior.
+
+The all-BSS scan compacts its load and cursor increment to make space for the
+second pointer check:
+
+```asm
+0x2fa388  ldr   x1, [x0], #8
+0x2fa38c  cbz   x1, 0x2fa3a0
+0x2fa390  ldr   x1, [x1, #0xb0]
+0x2fa394  cbz   x1, 0x2fa3a0
+0x2fa398  ldrh  w1, [x1, #0x72]      // original instruction
+0x2fa39c  tbnz  w1, #12, 0x2fa6dc  // original instruction
+```
+
+Both missing pointers now reach the original cursor/end comparison at
+`0x2fa3a0`. An initialized configuration with the RRM bit still takes the
+original feature-enabled path. The loop's existing backedge retains its entry
+address.
+
+Allocation rollback retargets the original `mfree` call at `0x2795ac` to six
+instructions occupying the former failure epilogue at
+`0x2795b8`–`0x2795cc`. They compare the published slot with the failed
+configuration, clear it only if ownership matches, then tail-call the original
+`wlc_bsscfg_mfree` with its original arguments and return address. A slot
+occupied by another configuration is preserved. Initial allocation failure
+still skips cleanup; initialization and final extra-allocation failure use the
+new rollback. Success retains the existing path. The failure epilogue's entry
+at `0x2795b4` now branches to the complete original success epilogue at
+`0x279600`, which restores the same saved registers and stack.
+
+Normal freeing reorders the three words at `0x2796a4`–`0x2796ac` to load the
+slot table, clear the indexed entry, then call the original `mfree`. The
+configuration and driver arguments and the remaining free behavior are
+preserved. No partially initialized configuration is passed to the full
+`wlc_bsscfg_free` routine as a substitute for allocation rollback.
+
+Static inspection found no relocation at the modified instructions and no
+incoming direct branch into the repurposed allocation epilogue. The
+instruction replacements preserve their function entry points and the RRM
+switch entry. Object/package verification must also ensure the kernel's
+alternative-instruction machinery does not replace a patched site.
+
+## CI regression and practical limits
+
+`tools/ci/test-ax86u-rrm-patches.py` applies the production manifest using the
+same ELF patcher as the firmware build, checks the complete changed-byte set,
+and executes original and patched instruction streams in Unicorn. It covers:
+
+- Original NULL-selected-BSS crashes for zero/nonzero bitmaps versus a patched
+  pre-mutation -25 return.
+- Full mask-prefix register, flags, parameter and scratch-state equivalence
+  for zero/all-set masks, every individual bit, and deterministic random masks.
+- Orphaned first/last BSS slots, ordinary empty slots, and valid RRM slots
+  before or after an orphan, including cursor and feature-bit behavior.
+- Initial/initialization/extra allocation failure, successful allocation,
+  indices 0 and 15, another slot owner, return values and callee-saved registers.
+- Normal primary/secondary frees, original published-at-`mfree` behavior versus
+  patched unpublication, original cleanup arguments, and register/stack
+  preservation. The emulated configuration page is unmapped at `mfree` to
+  detect subsequent reads of the reclaimed object.
+
+The mask, pointer checks, traversal, rollback, free ordering and function
+prologues/epilogues execute actual object instructions. External services
+(allocation, initialization, cleanup and capability-notification helpers) are
+stubbed according to their observed call interfaces; this does not emulate
+their entire implementation, interrupt scheduling or hardware.
+
+The repair corrects the established NULL accesses and publication/rollback
+ordering under the existing driver locking contract. It does not establish
+that arbitrary concurrent readers cannot retain a pointer across reclamation,
+or repair every private BSS reference. A NULL check on an already freed
+configuration is insufficient without lifetime protection. The saved crash
+does not identify which allocator/callback path produced the orphan.
+
+GitHub Actions must execute these regressions, compile/package the corrected
+target module, and verify the packaged instruction bytes. Hardware validation
+is separate. No local firmware build, local Unicorn regression run, router
+change, or direct modification of the tracked prebuilt object was performed
+for this repair specification.
