@@ -37,8 +37,24 @@ def verify_dhd(patcher):
                 raise SystemExit("DHD still uses its original weak function: " + name)
         for alias in specification["aliases"]:
             symbol = elf.get_symbol(alias["name"])
-            if symbol.info != 0x12 or symbol.value != base + alias["symbol_value"]:
+            if symbol.info != 0x12 or symbol.value != base + alias["symbol_value"] + alias.get("entry_offset", 0):
                 raise SystemExit("Linked DHD helper alias changed: " + alias["name"])
+        hook = specification.get("hcap_hook")
+        if hook:
+            if not any(hook["marker"].encode() in data[s.offset:s.offset + s.size]
+                       for s in elf.sections if s.name.startswith(".rodata")):
+                raise SystemExit("Missing DHD coherency marker: " + str(path))
+            caller = elf.get_symbol(hook["caller_symbol"])
+            position = caller.value + hook["caller_offset"]
+            word = struct.unpack_from("<I", data, elf.text.offset + position)[0]
+            immediate = word & 0x3ffffff
+            if immediate & 0x2000000:
+                immediate -= 0x4000000
+            destination = elf.get_symbol(hook["helper_alias"])
+            if word & 0xfc000000 != 0x94000000 or position + immediate * 4 != destination.value:
+                raise SystemExit("DHD coherency call does not enter the reviewed helper")
+            patcher.validate_unreferenced_code(elf, specification["unreferenced_code"],
+                                              allowed_callers={position})
         for call in specification["caller_checks"]:
             functions = [symbol for symbol in original.symbols.values()
                          if symbol.section_index == original.text.index and symbol.info & 15 == 2
@@ -71,12 +87,13 @@ def verify_dhd(patcher):
             symbol = elf.get_symbol(modification["symbol"])
             position = elf.text.offset + symbol.value + patcher._integer(modification["offset"])
             if struct.unpack_from("<I", data, position)[0] != int(modification["replacement"], 16):
-                raise SystemExit("Missing linked DHD recovery fix: " + modification["name"])
+                raise SystemExit("Missing linked DHD instruction fix: " + modification["name"])
         results.append({"path": str(path.relative_to(ROOT)),
                         "sha256": hashlib.sha256(data).hexdigest(),
                         "verified_strong_functions": specification["weaken_symbols"],
                         "verified_callsite_count": len(specification["caller_checks"]),
-                        "verified_recovery_instruction_count": len(specification.get("patches", []))})
+                        "verified_instruction_count": len(specification.get("patches", [])),
+                        "verified_coherency_hook": bool(hook)})
     return results
 
 

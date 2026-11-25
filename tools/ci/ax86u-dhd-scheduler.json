@@ -30,6 +30,13 @@
       "symbol": "dhd_bus_watchdog",
       "symbol_value": 205776,
       "prototype": "unsigned char(void *pub)"
+    },
+    {
+      "name": "ax86u_dhd_runner_hcap_filter",
+      "symbol": "pcie_coherent_accenable",
+      "symbol_value": 323912,
+      "entry_offset": 44,
+      "prototype": "Interior A64 hook: w0=hcap1, x19=bus; preserves x1..x29 and NZCV."
     }
   ],
   "function_checks": [
@@ -86,6 +93,30 @@
       "symbol_value": 189392,
       "size": 1148,
       "sha256": "e260c798a9f0fc38fa7ce359f60387fb2a2273087467e4fe0ac4456845ba32dc"
+    },
+    {
+      "symbol": "pcie_coherent_accenable",
+      "symbol_value": 323912,
+      "size": 124,
+      "sha256": "fb03f57ceaf8b1005b88e39806fef0eb0fc22c0dab5aad9d415960e3366ebe4a"
+    },
+    {
+      "symbol": "dhd_bus_init",
+      "symbol_value": 219008,
+      "size": 2472,
+      "sha256": "929bbaa49e14062683dae3c42bac06e78e9f20aee957f468c8f6a8364e50bba8"
+    },
+    {
+      "symbol": "dhd_prot_preinit",
+      "symbol_value": 170384,
+      "size": 1476,
+      "sha256": "4d3ec515168db2725be96a136afc71c752abb6a3b9e48b2240591ffb9f187095"
+    },
+    {
+      "symbol": "dhd_prot_set_hwa_attributes",
+      "symbol_value": 189104,
+      "size": 172,
+      "sha256": "cf84cd7b125fe4f5aa5b37dde1e8515ff74c592f54584310d11a5934621e94fb"
     }
   ],
   "caller_checks": [
@@ -240,9 +271,135 @@
       "original": "17ffff51",
       "replacement": "17ffff54",
       "rationale": "The non-offloaded DMA-index path must preserve its update even if the prior void writer leaves a nonzero register value."
+    },
+    {
+      "name": "runner_rx_hcap_guard_00",
+      "symbol": "pcie_coherent_accenable",
+      "symbol_value": 323912,
+      "offset": 44,
+      "original": "b40001c0",
+      "replacement": "a9bf47f0",
+      "rationale": "Use the unused relocation-free interior to retain legacy CPU coherency for host-owned RX and clear HCAP HW_COHERENCY for Runner-owned RX. Preserve scratch registers, flags and stack; skip the untouched arm64-alternative load and its barrier."
+    },
+    {
+      "name": "runner_rx_hcap_guard_01",
+      "symbol": "pcie_coherent_accenable",
+      "symbol_value": 323912,
+      "offset": 48,
+      "original": "d5033e9f",
+      "replacement": "f9400270",
+      "rationale": "Use the unused relocation-free interior to retain legacy CPU coherency for host-owned RX and clear HCAP HW_COHERENCY for Runner-owned RX. Preserve scratch registers, flags and stack; skip the untouched arm64-alternative load and its barrier."
+    },
+    {
+      "name": "runner_rx_hcap_guard_02",
+      "symbol": "pcie_coherent_accenable",
+      "symbol_value": 323912,
+      "offset": 52,
+      "original": "52801101",
+      "replacement": "b40000f0",
+      "rationale": "Use the unused relocation-free interior to retain legacy CPU coherency for host-owned RX and clear HCAP HW_COHERENCY for Runner-owned RX. Preserve scratch registers, flags and stack; skip the untouched arm64-alternative load and its barrier."
+    },
+    {
+      "name": "runner_rx_hcap_guard_03",
+      "symbol": "pcie_coherent_accenable",
+      "symbol_value": 323912,
+      "offset": 56,
+      "original": "91048002",
+      "replacement": "91400a10",
+      "rationale": "Use the unused relocation-free interior to retain legacy CPU coherency for host-owned RX and clear HCAP HW_COHERENCY for Runner-owned RX. Preserve scratch registers, flags and stack; skip the untouched arm64-alternative load and its barrier."
+    },
+    {
+      "name": "runner_rx_hcap_guard_04",
+      "symbol": "pcie_coherent_accenable",
+      "symbol_value": 323912,
+      "offset": 60,
+      "original": "b9000041",
+      "replacement": "b94aa210",
+      "rationale": "Use the unused relocation-free interior to retain legacy CPU coherency for host-owned RX and clear HCAP HW_COHERENCY for Runner-owned RX. Preserve scratch registers, flags and stack; skip the untouched arm64-alternative load and its barrier."
+    },
+    {
+      "name": "runner_rx_hcap_guard_05",
+      "symbol": "pcie_coherent_accenable",
+      "symbol_value": 323912,
+      "offset": 64,
+      "original": "91049000",
+      "replacement": "371000f0",
+      "rationale": "Use the unused relocation-free interior to retain legacy CPU coherency for host-owned RX and clear HCAP HW_COHERENCY for Runner-owned RX. Preserve scratch registers, flags and stack; skip the untouched arm64-alternative load and its barrier."
+    },
+    {
+      "name": "runner_rx_hcap_guard_06",
+      "symbol": "pcie_coherent_accenable",
+      "symbol_value": 323912,
+      "offset": 68,
+      "original": "b9002fbf",
+      "replacement": "14000003",
+      "rationale": "Use the unused relocation-free interior to retain legacy CPU coherency for host-owned RX and clear HCAP HW_COHERENCY for Runner-owned RX. Preserve scratch registers, flags and stack; skip the untouched arm64-alternative load and its barrier."
+    },
+    {
+      "name": "runner_rx_hcap_guard_09",
+      "symbol": "pcie_coherent_accenable",
+      "symbol_value": 323912,
+      "offset": 80,
+      "original": "b9002fa1",
+      "replacement": "32170000",
+      "rationale": "Use the unused relocation-free interior to retain legacy CPU coherency for host-owned RX and clear HCAP HW_COHERENCY for Runner-owned RX. Preserve scratch registers, flags and stack; skip the untouched arm64-alternative load and its barrier."
+    },
+    {
+      "name": "runner_rx_hcap_guard_10",
+      "symbol": "pcie_coherent_accenable",
+      "symbol_value": 323912,
+      "offset": 84,
+      "original": "b9402fa1",
+      "replacement": "a8c147f0",
+      "rationale": "Use the unused relocation-free interior to retain legacy CPU coherency for host-owned RX and clear HCAP HW_COHERENCY for Runner-owned RX. Preserve scratch registers, flags and stack; skip the untouched arm64-alternative load and its barrier."
+    },
+    {
+      "name": "runner_rx_hcap_guard_11",
+      "symbol": "pcie_coherent_accenable",
+      "symbol_value": 323912,
+      "offset": 88,
+      "original": "d5033e9f",
+      "replacement": "d65f03c0",
+      "rationale": "Use the unused relocation-free interior to retain legacy CPU coherency for host-owned RX and clear HCAP HW_COHERENCY for Runner-owned RX. Preserve scratch registers, flags and stack; skip the untouched arm64-alternative load and its barrier."
+    },
+    {
+      "name": "runner_rx_hcap_guard_12",
+      "symbol": "pcie_coherent_accenable",
+      "symbol_value": 323912,
+      "offset": 92,
+      "original": "32180421",
+      "replacement": "12167800",
+      "rationale": "Use the unused relocation-free interior to retain legacy CPU coherency for host-owned RX and clear HCAP HW_COHERENCY for Runner-owned RX. Preserve scratch registers, flags and stack; skip the untouched arm64-alternative load and its barrier."
+    },
+    {
+      "name": "runner_rx_hcap_guard_13",
+      "symbol": "pcie_coherent_accenable",
+      "symbol_value": 323912,
+      "offset": 96,
+      "original": "b9000001",
+      "replacement": "a8c147f0",
+      "rationale": "Use the unused relocation-free interior to retain legacy CPU coherency for host-owned RX and clear HCAP HW_COHERENCY for Runner-owned RX. Preserve scratch registers, flags and stack; skip the untouched arm64-alternative load and its barrier."
+    },
+    {
+      "name": "runner_rx_hcap_guard_14",
+      "symbol": "pcie_coherent_accenable",
+      "symbol_value": 323912,
+      "offset": 100,
+      "original": "2a1403e1",
+      "replacement": "d65f03c0",
+      "rationale": "Use the unused relocation-free interior to retain legacy CPU coherency for host-owned RX and clear HCAP HW_COHERENCY for Runner-owned RX. Preserve scratch registers, flags and stack; skip the untouched arm64-alternative load and its barrier."
+    },
+    {
+      "name": "runner_rx_hcap_negotiation_hook",
+      "symbol": "dhd_bus_init",
+      "symbol_value": 219008,
+      "offset": 1508,
+      "original": "32170000",
+      "replacement": "94006504",
+      "rationale": "Filter the original unconditional HCAP HW_COHERENCY advertisement before the existing IPC capability store, preserving offload flags, ring geometry, indices and hardware-register access."
     }
   ],
-  "rationale": "The original scheduler advances a cached host reader without consuming Runner-owned RX completions. Use the actual DMA/shared consumer and producer indices for a non-consuming scheduling check, preserving TX behavior and the existing Runner ipend notification guard. The existing watchdog supplies periodic RX-only retries under the original perimeter lock after active-state rechecks, without adding a timer or extending protocol lifetime. This repairs retry suppression when the cached reader catches the producer; it does not prove the initiating hardware stall or guarantee recovery from every loss of progress. HWA RX stop recovery now aborts on drain timeout and on nonzero RX-post reinitialization status; success and non-offloaded paths retain the original calls and arguments without changing relocation slots.",
+  "rationale": "The original scheduler advances a cached host reader without consuming Runner-owned RX completions. Use the actual DMA/shared consumer and producer indices for a non-consuming scheduling check, preserving TX behavior and the existing Runner ipend notification guard. The existing watchdog supplies periodic RX-only retries under the original perimeter lock after active-state rechecks, without adding a timer or extending protocol lifetime. This repairs retry suppression when the cached reader catches the producer; it does not prove the initiating hardware stall or guarantee recovery from every loss of progress. HWA RX stop recovery now aborts on drain timeout and on nonzero RX-post reinitialization status; success and non-offloaded paths retain the original calls and arguments without changing relocation slots. The boot capability guard preserves CPU coherency for host-owned reception and clears it for Runner-owned RX. Hardware captures isolated a stalled Runner RX input view with an empty host queue, enabled IRQ and remaining HWA credits. Enabled-path validation of this coherency correction remains pending.",
   "reinit_guard_control_flow": {
     "notification_call_offset": 189792,
     "update_call_offset": 189800,
@@ -269,5 +426,39 @@
       190336
     ],
     "note": "The nine instruction replacements reuse a duplicate epilogue; both existing CALL26 relocations and zero-valued notification arguments stay unchanged. Direct non-offloaded entrances bypass the status guard."
+  },
+  "unreferenced_code": [
+    {
+      "symbol": "pcie_coherent_accenable",
+      "reason": "No incoming execution branch, ordinary address reference, or kernel export may reach the unused routine. Its arm64-alternative instruction is retained and unreachable from the new helper."
+    }
+  ],
+  "hcap_hook": {
+    "caller_symbol": "dhd_bus_init",
+    "caller_offset": 1508,
+    "helper_alias": "ax86u_dhd_runner_hcap_filter",
+    "helper_size": 60,
+    "marker": "DHD_RUNNER_COHERENCY_FIX_V1",
+    "pub_runner_flags_offset": 10912,
+    "rx_offload_bit": 2,
+    "hcap_hw_coherency_mask": 512,
+    "bus_pub_offset": 0,
+    "entry_interior_offset": 44,
+    "unreachable_offsets": [
+      28,
+      32
+    ],
+    "note": "The existing caller publishes the filtered HCAP word. Original caller/address references and all arm64-alternative ranges are checked before mutation. Hardware RX-offload validation remains necessary.",
+    "boot_order": {
+      "preinit_symbol": "dhd_prot_preinit",
+      "preinit_call_offset": 1072,
+      "preinit_success_branch_offset": 1080,
+      "preinit_success_target_offset": 1488,
+      "preinit_rx_flag_window": 170796,
+      "preinit_rx_flag_window_end": 170816,
+      "preinit_no_rx_target": 171464,
+      "enabled_status_byte_offset": 116,
+      "note": "dhd_bus_init calls protocol preinit at0x35bb0; success branches to HWA attributes at0x35d50 before HCAP filtering at0x35d64. Preinit converts enabled-status RX bit1 to pub Runner flag bit2."
+    }
   }
 }

@@ -4,6 +4,10 @@
 const char ax86u_rx_schedule_fix_marker[] __attribute__((used)) =
 	"DHD_RX_SCHEDULE_FIX_V1";
 
+/* The build verifier checks the capability hook as well as this marker. */
+const char ax86u_runner_coherency_fix_marker[] __attribute__((used)) =
+	"DHD_RUNNER_COHERENCY_FIX_V1";
+
 #define AX86U_RNR_TXSTS_OFFLOAD (1U << 1)
 #define AX86U_RNR_RXCMPL_OFFLOAD (1U << 2)
 #define AX86U_H2R_RX_COMPL_NOTIF 5

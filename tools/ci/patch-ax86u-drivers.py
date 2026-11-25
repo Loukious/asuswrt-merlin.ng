@@ -166,6 +166,84 @@ def relocation_width(relocation_type):
     raise ValueError("Unsupported AArch64 code relocation type: " + str(relocation_type))
 
 
+def alternative_regions(elf):
+    """Instruction ranges that the arm64 module loader can replace at boot."""
+    ranges = []
+    relocations = {}
+    for relocation in elf.relocations:
+        relocations.setdefault((relocation.section_index, relocation.offset), []).append(relocation)
+    for section in elf.sections:
+        if section.name != ".altinstructions":
+            continue
+        if section.size % 12:
+            raise ValueError("Unexpected arm64 alternative record geometry")
+        for offset in range(0, section.size, 12):
+            origins = relocations.get((section.index, offset), [])
+            if len(origins) != 1 or origins[0].type != 261:
+                raise ValueError("Unresolved arm64 alternative origin")
+            relocation = origins[0]
+            if relocation.symbol_section_index != elf.text.index:
+                continue
+            length = elf.data[section.offset + offset + 10]
+            replacement_length = elf.data[section.offset + offset + 11]
+            start = relocation.symbol_value + relocation.addend
+            if not 0 < length or replacement_length > length or start < 0 or start + length > elf.text.size:
+                raise ValueError("Invalid arm64 alternative instruction range")
+            ranges.append((start, start + length))
+    return ranges
+
+
+def validate_unreferenced_code(elf, regions, allowed_callers=()):
+    """Reject reuse of an interior helper if the vendor routine has callers."""
+    relocation_sites = {r.offset for r in elf.relocations
+                        if r.section_index == elf.text.index}
+    for region in regions:
+        symbol = elf.get_symbol(region["symbol"])
+        start, end = symbol.value, symbol.value + symbol.size
+        if "__ksymtab_" + symbol.name in elf.symbols:
+            raise ValueError("Reused vendor routine is exported: " + symbol.name)
+        for relocation in elf.relocations:
+            if relocation.symbol_section_index != elf.text.index:
+                continue
+            # Original-instruction pointers are loader metadata, not callers.
+            # patch_blob separately rejects every overlap with their ranges.
+            if (elf.sections[relocation.section_index].name == ".altinstructions"
+                    and relocation.offset % 12 == 0 and relocation.type == 261):
+                continue
+            target = relocation.symbol_value + relocation.addend
+            if (relocation.section_index == elf.text.index and
+                    relocation.offset in allowed_callers and relocation.type in (282, 283)):
+                continue
+            if start <= target < end and not (
+                    relocation.section_index == elf.text.index and
+                    start <= relocation.offset < end):
+                raise ValueError("Reused vendor routine has an address reference: " + symbol.name)
+        for offset in range(0, elf.text.size - 3, 4):
+            if start <= offset < end or offset in relocation_sites or offset in allowed_callers:
+                continue
+            word = struct.unpack_from("<I", elf.data, elf.text.offset + offset)[0]
+            if word & 0x7c000000 == 0x14000000:  # B/BL
+                immediate, bits = word & 0x3ffffff, 26
+            elif (word & 0xff000010 == 0x54000000 or
+                  word & 0x7e000000 == 0x34000000):  # B.cond/CBZ/CBNZ
+                immediate, bits = (word >> 5) & 0x7ffff, 19
+            elif word & 0x7e000000 == 0x36000000:  # TBZ/TBNZ
+                immediate, bits = (word >> 5) & 0x3fff, 14
+            elif word & 0x9f000000 == 0x10000000:  # ADR address-taking
+                immediate = ((word >> 5) & 0x7ffff) << 2 | ((word >> 29) & 3)
+                if immediate & (1 << 20):
+                    immediate -= 1 << 21
+                if start <= offset + immediate < end:
+                    raise ValueError("Reused vendor routine has a raw address reference")
+                continue
+            else:
+                continue
+            if immediate & (1 << (bits - 1)):
+                immediate -= 1 << bits
+            if start <= offset + immediate * 4 < end:
+                raise ValueError("Reused vendor routine has an unrelocated caller: " + symbol.name)
+
+
 def patch_blob(data, spec):
     if spec.get("version") != 1 or spec.get("elf_machine") != 183 or spec.get("byte_order") != "little":
         raise ValueError("Unsupported patch specification")
@@ -179,6 +257,8 @@ def patch_blob(data, spec):
             raise ValueError("Function identity changed: " + symbol.name)
         if hashlib.sha256(elf.symbol_bytes(symbol.name)).hexdigest() != check["sha256"]:
             raise ValueError("Function bytes changed: " + symbol.name)
+    validate_unreferenced_code(elf, spec.get("unreferenced_code", []))
+    alternatives = alternative_regions(elf)
     patched = bytearray(data)
     sites = set()
     changes = []
@@ -190,6 +270,8 @@ def patch_blob(data, spec):
         if offset + 4 > symbol.size:
             raise ValueError("Patch extends beyond function: " + patch["name"])
         address = symbol.value + offset
+        if any(start < address + 4 and address < end for start, end in alternatives):
+            raise ValueError("Patch overlaps a runtime arm64 alternative: " + patch["name"])
         if address in sites:
             raise ValueError("Overlapping instruction patches")
         sites.add(address)

@@ -98,6 +98,7 @@ jobs:
           python3 tools/ci/check-ax86u-dhd-scheduler.py
           python3 tools/ci/test-ax86u-dhd-original-scheduler.py tools/ci/patch-ax86u-drivers.py
           python3 tools/ci/test-ax86u-dhd-hwa-timeout.py tools/ci/patch-ax86u-drivers.py
+          python3 tools/ci/test-ax86u-dhd-coherency.py
           cc -std=c99 -Wall -Wextra -Werror -O2 \
             tools/ci/test-ax86u-dhd-scheduler.c \
             release/src-rt-5.02L.07p2axhnd/router-sysdep.rt-ax86u/hnd_dhd/ax86u_rx_schedule.c \

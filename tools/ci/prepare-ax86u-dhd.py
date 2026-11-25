@@ -55,6 +55,9 @@ def validate_original(data, specification, patcher):
         symbol = elf.get_symbol(alias["symbol"])
         if symbol.value != alias["symbol_value"]:
             raise ValueError("DHD helper alias changed: " + alias["name"])
+        offset = alias.get("entry_offset", 0)
+        if not isinstance(offset, int) or offset < 0 or offset % 4 or offset >= symbol.size:
+            raise ValueError("DHD helper alias offset is outside its pinned function")
         if not re.fullmatch(r"[A-Za-z_][A-Za-z_0-9.$]*", alias["name"]):
             raise ValueError("Invalid helper alias name")
         if alias["name"] in elf.symbols:
@@ -86,7 +89,7 @@ def validate_prepared(original, prepared, specification, patcher):
             raise ValueError("Vendor DHD definition was not weakened: " + name)
     for alias in specification["aliases"]:
         symbol = after.get_symbol(alias["name"])
-        if symbol.value != alias["symbol_value"] or symbol.info != 0x12:
+        if symbol.value != alias["symbol_value"] + alias.get("entry_offset", 0) or symbol.info != 0x12:
             raise ValueError("DHD alias does not identify the reviewed helper")
     return after
 
@@ -108,7 +111,8 @@ def main():
     command = [args.objcopy]
     command.extend("--weaken-symbol=" + name for name in specification["weaken_symbols"])
     command.extend("--add-symbol={}=.text:0x{:x},global,function".format(
-        alias["name"], alias["symbol_value"]) for alias in specification["aliases"])
+        alias["name"], alias["symbol_value"] + alias.get("entry_offset", 0))
+        for alias in specification["aliases"])
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".ax86u-dhd-", dir=str(args.output.parent)) as temporary:
         input_path = Path(temporary) / "reviewed-dhd.o"

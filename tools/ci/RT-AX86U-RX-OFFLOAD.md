@@ -1,5 +1,11 @@
 # RT-AX86U receive-offload scheduling fixes and fallback
 
+Hardware validation of `9b70fdcce2` reproduced the RX stall despite the scheduler
+and recovery fixes. Subsequent bounded captures located frozen Runner input
+indices with an empty host queue, enabled IRQ, and remaining HWA credits.
+The new [coherency comparison](RT-AX86U-RX-COHERENCY.md) tests the capability
+negotiation boundary; it still requires enabled-offload hardware validation.
+
 The enabled receive-offload path now has a source-built scheduling correction:
 RX scheduling checks the real consumer and producer indices without advancing
 the host's cached reader, and the existing watchdog periodically retries pending
