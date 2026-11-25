@@ -47,7 +47,7 @@ jobs:
             liblzo2-dev libncurses5 libncurses5-dev libncurses5:i386 libproxy-dev \
             libltdl-dev libslang2-dev libssl-dev libtool libtool-bin libvorbis-dev \
             libxml-parser-perl libxml2-dev liblzma-dev lzma lzma-dev m4 make \
-            mtd-utils patch perl pkg-config python2 python3 python3-unicorn python-is-python2 qemu-user \
+            mtd-utils patch perl pkg-config python2 python3 python3-pip python-is-python2 qemu-user \
             rsync sharutils shtool subversion tar texinfo u-boot-tools unzip \
             uuid-dev xxd xsltproc zip zlib1g-dev
           apt-get clean
@@ -88,10 +88,21 @@ jobs:
         working-directory: asuswrt-merlin.ng
         run: |
           set -Eeuo pipefail
+          python3 -m pip install --no-deps --only-binary=:all: \
+            --target "$RUNNER_TEMP/router-test-python" unicorn==2.0.1.post1
+          export PYTHONPATH="$RUNNER_TEMP/router-test-python${PYTHONPATH:+:$PYTHONPATH}"
           python3 tools/ci/check-wfd-bdmf-headers.py
           python3 tools/ci/check-ax86u-runner-header.py
           python3 tools/ci/test-ax86u-rrm-patches.py
           python3 tools/ci/test-ax86u-rdpa-patches.py tools/ci/patch-ax86u-drivers.py
+          python3 tools/ci/check-ax86u-dhd-scheduler.py
+          python3 tools/ci/test-ax86u-dhd-original-scheduler.py tools/ci/patch-ax86u-drivers.py
+          python3 tools/ci/test-ax86u-dhd-hwa-timeout.py tools/ci/patch-ax86u-drivers.py
+          cc -std=c99 -Wall -Wextra -Werror -O2 \
+            tools/ci/test-ax86u-dhd-scheduler.c \
+            release/src-rt-5.02L.07p2axhnd/router-sysdep.rt-ax86u/hnd_dhd/ax86u_rx_schedule.c \
+            -o "$RUNNER_TEMP/test-ax86u-dhd-scheduler"
+          "$RUNNER_TEMP/test-ax86u-dhd-scheduler"
           cc -std=c99 -Wall -Wextra -Werror -O2 \
             tools/ci/test-ax86u-rxoffload-policy.c \
             -o "$RUNNER_TEMP/test-ax86u-rxoffload-policy"
@@ -134,6 +145,11 @@ jobs:
             tools/ci/test-ax86u-runner-descriptor.c \
             -o "$RUNNER_TEMP/test-ax86u-runner-descriptor"
           qemu-aarch64 "$RUNNER_TEMP/test-ax86u-runner-descriptor"
+          "$descriptor_compiler" -static -std=c99 -Wall -Wextra -Werror -O2 \
+            tools/ci/test-ax86u-dhd-scheduler.c \
+            release/src-rt-5.02L.07p2axhnd/router-sysdep.rt-ax86u/hnd_dhd/ax86u_rx_schedule.c \
+            -o "$RUNNER_TEMP/test-ax86u-dhd-scheduler-aarch64"
+          qemu-aarch64 "$RUNNER_TEMP/test-ax86u-dhd-scheduler-aarch64"
 
       - name: Build and package firmware
         if: ${{ inputs.checks_only != true }}

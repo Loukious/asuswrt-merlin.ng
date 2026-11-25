@@ -1,0 +1,273 @@
+{
+  "version": 1,
+  "target": "release/src-rt-5.02L.07p2axhnd/router-sysdep.rt-ax86u/hnd_extra/prebuilt/dhd.o",
+  "original_sha256": "5324962629d4ddfff7efcdcf65f49a843edcbcd9ec743d5d18522f61fd25f173",
+  "elf_machine": 183,
+  "byte_order": "little",
+  "source": "release/src-rt-5.02L.07p2axhnd/router-sysdep.rt-ax86u/hnd_dhd/ax86u_rx_schedule.c",
+  "header": "release/src-rt-5.02L.07p2axhnd/router-sysdep.rt-ax86u/hnd_dhd/ax86u_rx_schedule.h",
+  "replacement_symbol": "dhd_prot_schedule_runner",
+  "marker": "DHD_RX_SCHEDULE_FIX_V1",
+  "weaken_symbols": [
+    "dhd_prot_schedule_runner",
+    "dhd_bus_watchdog"
+  ],
+  "aliases": [
+    {
+      "name": "ax86u_dhd_legacy_get_read_addr",
+      "symbol": "dhd_prot_get_read_addr",
+      "symbol_value": 158664,
+      "prototype": "unsigned char *(void *pub, void *ring, unsigned int *available_len)"
+    },
+    {
+      "name": "ax86u_dhd_dma_indx_get",
+      "symbol": "dhd_prot_dma_indx_get.isra.15",
+      "symbol_value": 158304,
+      "prototype": "unsigned short(void *prot, void **runner_hlp_addr, unsigned char type, unsigned short ringid)"
+    },
+    {
+      "name": "ax86u_dhd_legacy_bus_watchdog",
+      "symbol": "dhd_bus_watchdog",
+      "symbol_value": 205776,
+      "prototype": "unsigned char(void *pub)"
+    }
+  ],
+  "function_checks": [
+    {
+      "symbol": "dhd_prot_schedule_runner",
+      "symbol_value": 188064,
+      "size": 152,
+      "sha256": "db31d021d5ab688f70dbfa1bf0cae506606a9c9ce5b37a0946fcbddbf19085d2"
+    },
+    {
+      "symbol": "dhd_prot_get_read_addr",
+      "symbol_value": 158664,
+      "size": 260,
+      "sha256": "fbfd8f8d6b3638e472c4a74a654bc0b3ac8a3634ead21ebdc422808a0c378d88"
+    },
+    {
+      "symbol": "dhd_prot_dma_indx_get.isra.15",
+      "symbol_value": 158304,
+      "size": 320,
+      "sha256": "0fa5598926cc3e7ec1649985318deaab2525e210850aadd2611104acdea45f57"
+    },
+    {
+      "symbol": "dhd_bus_watchdog",
+      "symbol_value": 205776,
+      "size": 176,
+      "sha256": "449b15b8c1ae9cf0c73d7aad1027add22a32fb82b56666f7d6a6a6cc50b10e40"
+    },
+    {
+      "symbol": "dhd_msgbuf_watchdog",
+      "symbol_value": 176224,
+      "size": 156,
+      "sha256": "80a98b06ff33a889ad0f73683738fa4189b78b3ba4817192d1703566b20b021c"
+    },
+    {
+      "symbol": "dhd_perim_lock",
+      "symbol_value": 83072,
+      "size": 40,
+      "sha256": "7b3954c7736f1467cc6546ce28eb891c0d0ade227569e247cab05c6839043ab2"
+    },
+    {
+      "symbol": "dhd_perim_unlock",
+      "symbol_value": 83120,
+      "size": 40,
+      "sha256": "7b3954c7736f1467cc6546ce28eb891c0d0ade227569e247cab05c6839043ab2"
+    },
+    {
+      "symbol": "dhd_prot_print_flow_ring",
+      "symbol_value": 186096,
+      "size": 408,
+      "sha256": "7a796bf4cc5a9c5e043c07f0c2efa33a8c6126c3a8ade37de3d74681d6860369"
+    },
+    {
+      "symbol": "dhd_prot_process_hwa_event",
+      "symbol_value": 189392,
+      "size": 1148,
+      "sha256": "e260c798a9f0fc38fa7ce359f60387fb2a2273087467e4fe0ac4456845ba32dc"
+    }
+  ],
+  "caller_checks": [
+    {
+      "section": ".text",
+      "offset": 199672,
+      "type": 283,
+      "symbol": "dhd_prot_schedule_runner",
+      "addend": 0
+    },
+    {
+      "section": ".text",
+      "offset": 77860,
+      "type": 283,
+      "symbol": "dhd_bus_watchdog",
+      "addend": 0
+    },
+    {
+      "section": ".text",
+      "offset": 78124,
+      "type": 283,
+      "symbol": "dhd_bus_watchdog",
+      "addend": 0
+    },
+    {
+      "section": ".text",
+      "offset": 218336,
+      "type": 283,
+      "symbol": "dhd_bus_watchdog",
+      "addend": 0
+    }
+  ],
+  "layout": {
+    "pointer_size": 8,
+    "pub": {
+      "bus": 8,
+      "prot": 16,
+      "info": 24,
+      "up": 40,
+      "dongle_reset": 42,
+      "busstate": 44,
+      "iswl": 61,
+      "dma_d2h_ring_upd_support": 10777,
+      "dma_h2d_ring_upd_support": 10778,
+      "runner_hlp": 10904,
+      "runner_flags": 10912
+    },
+    "prot": {
+      "tx_completion_ring": 432,
+      "rx_completion_ring": 552
+    },
+    "ring": {
+      "id": 2
+    }
+  },
+  "patches": [
+    {
+      "name": "hwa_rx_stop_abort_timeout_without_debug",
+      "symbol": "dhd_prot_process_hwa_event",
+      "symbol_value": 189392,
+      "offset": 728,
+      "original": "3607f480",
+      "replacement": "3607eb60",
+      "rationale": "On an RX-completion drain timeout with error logging disabled, return through the existing epilogue instead of proceeding to RX-post reinitialization with outstanding completions."
+    },
+    {
+      "name": "hwa_rx_stop_abort_timeout_after_logging",
+      "symbol": "dhd_prot_process_hwa_event",
+      "symbol_value": 189392,
+      "offset": 760,
+      "original": "17ffff9c",
+      "replacement": "17ffff53",
+      "rationale": "After logging an RX-completion drain timeout, return through the existing epilogue instead of proceeding to RX-post reinitialization with outstanding completions. Persistent failure can leave firmware RX paused; this does not force hardware recovery."
+    },
+    {
+      "name": "hwa_reinit_status_to_guard",
+      "symbol": "dhd_prot_process_hwa_event",
+      "symbol_value": 189392,
+      "offset": 404,
+      "original": "aa1403e0",
+      "replacement": "14000005",
+      "rationale": "Route the RX-post reinitialization result to its dedicated status guard, keeping the original notifier call and all arguments unchanged."
+    },
+    {
+      "name": "hwa_rxpost_update_to_shared_epilogue",
+      "symbol": "dhd_prot_process_hwa_event",
+      "symbol_value": 189392,
+      "offset": 412,
+      "original": "a94153f3",
+      "replacement": "17ffffaa",
+      "rationale": "After the unchanged RX-post update call, return through the existing complete epilogue rather than the repurposed duplicate epilogue."
+    },
+    {
+      "name": "hwa_rxpost_restore_pub_argument",
+      "symbol": "dhd_prot_process_hwa_event",
+      "symbol_value": 189392,
+      "offset": 416,
+      "original": "a9425bf5",
+      "replacement": "aa1403e0",
+      "rationale": "Restore the public DHD argument in the shared successful/non-offloaded update path."
+    },
+    {
+      "name": "hwa_rxpost_call_original_update",
+      "symbol": "dhd_prot_process_hwa_event",
+      "symbol_value": 189392,
+      "offset": 420,
+      "original": "a94363f7",
+      "replacement": "17fffffd",
+      "rationale": "Enter the unchanged relocated RX-post update call after restoring its public DHD argument."
+    },
+    {
+      "name": "hwa_rxpost_abort_reinit_failure",
+      "symbol": "dhd_prot_process_hwa_event",
+      "symbol_value": 189392,
+      "offset": 424,
+      "original": "a9446bf9",
+      "replacement": "35fff4e0",
+      "rationale": "On any nonzero RX-post reinitialization status, return through the complete existing epilogue before RX-post update can issue its hardware doorbell."
+    },
+    {
+      "name": "hwa_rxpost_success_to_argument_restore",
+      "symbol": "dhd_prot_process_hwa_event",
+      "symbol_value": 189392,
+      "offset": 428,
+      "original": "a94573fb",
+      "replacement": "17fffffd",
+      "rationale": "After successful RX-post reinitialization, continue to the shared argument restore and unchanged update call."
+    },
+    {
+      "name": "hwa_rxpost_nonoffload_early_bypass_status",
+      "symbol": "dhd_prot_process_hwa_event",
+      "symbol_value": 189392,
+      "offset": 508,
+      "original": "36c7fcc0",
+      "replacement": "36c7fd20",
+      "rationale": "The non-offloaded capability-disabled path has no reinitialization status; branch directly to argument restore without interpreting unrelated register contents."
+    },
+    {
+      "name": "hwa_rxpost_nonoffload_shared_bypass_status",
+      "symbol": "dhd_prot_process_hwa_event",
+      "symbol_value": 189392,
+      "offset": 888,
+      "original": "17ffff87",
+      "replacement": "17ffff8a",
+      "rationale": "The non-offloaded shared-index path must preserve its update even if the prior void writer leaves a nonzero register value."
+    },
+    {
+      "name": "hwa_rxpost_nonoffload_dma_bypass_status",
+      "symbol": "dhd_prot_process_hwa_event",
+      "symbol_value": 189392,
+      "offset": 1104,
+      "original": "17ffff51",
+      "replacement": "17ffff54",
+      "rationale": "The non-offloaded DMA-index path must preserve its update even if the prior void writer leaves a nonzero register value."
+    }
+  ],
+  "rationale": "The original scheduler advances a cached host reader without consuming Runner-owned RX completions. Use the actual DMA/shared consumer and producer indices for a non-consuming scheduling check, preserving TX behavior and the existing Runner ipend notification guard. The existing watchdog supplies periodic RX-only retries under the original perimeter lock after active-state rechecks, without adding a timer or extending protocol lifetime. This repairs retry suppression when the cached reader catches the producer; it does not prove the initiating hardware stall or guarantee recovery from every loss of progress. HWA RX stop recovery now aborts on drain timeout and on nonzero RX-post reinitialization status; success and non-offloaded paths retain the original calls and arguments without changing relocation slots.",
+  "reinit_guard_control_flow": {
+    "notification_call_offset": 189792,
+    "update_call_offset": 189800,
+    "existing_epilogue": 189460,
+    "original_common_argument_restore": 189796,
+    "guard": 189816,
+    "argument_restore": 189808,
+    "nonoffloaded_incoming_branches": [
+      189900,
+      190280,
+      190496
+    ],
+    "original_reused_block_direct_incoming": [],
+    "event_switch_targets": [
+      189612,
+      189556,
+      189508,
+      189832
+    ],
+    "item_format_switch_targets": [
+      190160,
+      190160,
+      190288,
+      190336
+    ],
+    "note": "The nine instruction replacements reuse a duplicate epilogue; both existing CALL26 relocations and zero-valued notification arguments stay unchanged. Direct non-offloaded entrances bypass the status guard."
+  }
+}

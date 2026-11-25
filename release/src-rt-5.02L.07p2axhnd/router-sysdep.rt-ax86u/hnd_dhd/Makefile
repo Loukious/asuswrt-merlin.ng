@@ -91,7 +91,23 @@ ifeq ($(REBUILD_DHD_MODULE),1)
 else # Use prebuilt modules
 
     prebuilt := $(TARGET).o
+ifeq ($(WFD_BUILD_FROM_SOURCE),1)
+    # Keep the reviewed vendor code and link the corrected RX scheduler from source.
+    $(TARGET)-objs := prebuilt/dhd-ax86u.o ax86u_rx_schedule.o
+    targets += prebuilt/dhd-ax86u.o
+    ax86u_ci_dir := $(HND_SRC)/../../tools/ci
+    quiet_cmd_ax86u_dhd = AX86U  $@
+    cmd_ax86u_dhd = python3 $(ax86u_ci_dir)/prepare-ax86u-dhd.py \
+        --spec $(ax86u_ci_dir)/ax86u-dhd-scheduler.json \
+        --input $(src)/../hnd_extra/prebuilt/dhd.o \
+        --output $@ --objcopy "$(OBJCOPY)"
+    $(obj)/prebuilt/dhd-ax86u.o: $(src)/../hnd_extra/prebuilt/dhd.o \
+        $(ax86u_ci_dir)/prepare-ax86u-dhd.py $(ax86u_ci_dir)/patch-ax86u-drivers.py \
+        $(ax86u_ci_dir)/ax86u-dhd-scheduler.json FORCE
+	$(call if_changed,ax86u_dhd)
+else
     $(TARGET)-objs := ../hnd_extra/prebuilt/$(prebuilt)
+endif
     obj-$(CONFIG_BCM_WLAN) := $(prebuilt)
 
 endif

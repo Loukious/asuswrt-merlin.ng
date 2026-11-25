@@ -88,7 +88,8 @@ cp "$repo_root/tools/ci/RT-AX86U-RX-OFFLOAD.md" \
 	"$repo_root/tools/ci/RT-AX86U-RRM-CRASH.md" \
 	"$repo_root/tools/ci/RT-AX86U-WFD-LIFECYCLE.md" \
 	"$repo_root/tools/ci/RT-AX86U-WFD-BDMF-HEADERS.md" \
-	"$repo_root/tools/ci/RT-AX86U-RUNNER-HEADERS.md" "$output_dir/"
+	"$repo_root/tools/ci/RT-AX86U-RUNNER-HEADERS.md" \
+	"$repo_root/tools/ci/RT-AX86U-HWA-RECOVERY.md" "$output_dir/"
 
 package_temp="$(mktemp -d)"
 checksum_file="$package_temp/sha256sum.sha256"

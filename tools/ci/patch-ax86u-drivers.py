@@ -45,6 +45,8 @@ class ElfRelocation:
     type: int
     symbol_name: str
     addend: int
+    symbol_value: int = 0
+    symbol_section_index: int = 0
 
 
 class ElfFile:
@@ -110,7 +112,8 @@ class ElfFile:
                 if index >= len(symbols):
                     raise ValueError("Invalid relocation symbol index")
                 self.relocations.append(ElfRelocation(section.info, offset,
-                    info & 0xffffffff, symbols[index].name, addend))
+                    info & 0xffffffff, symbols[index].name, addend,
+                    symbols[index].value, symbols[index].section_index))
 
     def _slice(self, offset, size):
         if offset < 0 or size < 0 or offset + size > len(self.data):
@@ -150,6 +153,19 @@ def _word(value):
     return struct.pack("<I", int(value, 16))
 
 
+def relocation_width(relocation_type):
+    # ELF AArch64 data relocations can span multiple instruction-sized words.
+    data_widths = {0: 0, 257: 8, 258: 4, 259: 2, 260: 8, 261: 4,
+                   262: 2, 307: 8, 308: 4, 1025: 8, 1026: 8,
+                   1027: 8, 1028: 8, 1029: 8, 1030: 8, 1031: 16, 1032: 8}
+    if relocation_type in data_widths:
+        return data_widths[relocation_type]
+    # These ABI ranges encode a relocation inside a single A64 instruction.
+    if 263 <= relocation_type <= 306 or 309 <= relocation_type <= 313 or 512 <= relocation_type <= 573:
+        return 4
+    raise ValueError("Unsupported AArch64 code relocation type: " + str(relocation_type))
+
+
 def patch_blob(data, spec):
     if spec.get("version") != 1 or spec.get("elf_machine") != 183 or spec.get("byte_order") != "little":
         raise ValueError("Unsupported patch specification")
@@ -178,7 +194,10 @@ def patch_blob(data, spec):
             raise ValueError("Overlapping instruction patches")
         sites.add(address)
         for relocation in elf.relocations:
-            if relocation.section_index == elf.text.index and address - 7 <= relocation.offset < address + 4:
+            if relocation.section_index != elf.text.index:
+                continue
+            width = relocation_width(relocation.type)
+            if width and relocation.offset < address + 4 and relocation.offset + width > address:
                 raise ValueError("Patch overlaps a relocation: " + patch["name"])
         position = elf.text.offset + address
         expected, replacement = _word(patch["original"]), _word(patch["replacement"])
