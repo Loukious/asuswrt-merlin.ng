@@ -20,17 +20,22 @@ INPUTS = {
     "1dd85d4200747f5cbf5699ffef1339f13b91622105b44b9af16c3c83576f2bfc": "installed module backup",
 }
 IMAGE_HASH = "449e860e7cdfce5ab121e2624b0652fd20dd382299d49602126aa6791d228b7e"
-PROBE_IMAGE_HASH = "6f0ea0c474891a8dcd91450ff61cf5068655afd15e55af811bb60e3d84917b12"
+PROBE_IMAGE_HASH = "5b652d7df26d84451f1c85e6cb408424c6ac8e0be8506527dc8f9b74bf5ebee0"
 NEARBY_WORDS = (0x211A4000, 0xA4A44A80, 0x067448E1, 0xFC000000, 0xBCB00FF4)
 RETIREMENT_WORDS = (0x22BB2110, 0x8CB2E0A6, 0xFC000000, 0x2ABB2110, 0x2A0A8A40)
-PROBE_SITES = ((0x0CC0, 0xB400), (0x1048, 0xB404))
-SCRATCH = 0xB400
 WORKER_REGISTER = 10
 NOP = 0xFC000000
 CLEAR_PC = 0x0CC4
 CONTINUE_PC = 0x0CD4
 TRAMPOLINE_PC = 0x7F00
 CLEAR_WORDS = (0xBCB00FF4, 0x22B2879C, 0x2A0287B4, 0x280A4000)
+PROBE_SITES = (
+    (0x0CC0, 0xB400),                # accepted assignment
+    (TRAMPOLINE_PC + 8, 0xB40C),    # after the first load
+    (TRAMPOLINE_PC + 16, 0xB610),   # after the first store
+    (TRAMPOLINE_PC + 24, 0xB408),   # after the mailbox clear
+    (0x1048, 0xB404),                # before updating availability
+)
 
 
 def jump(pc):
@@ -88,13 +93,14 @@ def make_probe(data, *, build_input=False):
     for name in "ABCD":
         _, _, other = runner_image(elf, name)
         for (word,) in struct.iter_unpack("<I", other):
+            address = (word >> 4) & 0xFFFF
             if ((word & 0xFE000000) in (0x22000000, 0x2A000000)
-                    and SCRATCH <= ((word >> 4) & 0xFFFF) < SCRATCH + 16):
+                    and (0xB400 <= address < 0xB410 or 0xB610 <= address < 0xB61C)):
                 raise ValueError(f"Direct memory reference conflicts with probe scratch in Runner {name}")
     # Move only the four straight-line instructions. Keep the conditional at
     # CONTINUE_PC in place and place NOPs in both delay slots of each jump.
-    marker = (word_store & 0xFE00000F) | (WORKER_REGISTER << 20) | (0xB408 << 4)
-    stub = (*CLEAR_WORDS, marker, jump(CONTINUE_PC), NOP, NOP)
+    setup, load, store, clear = CLEAR_WORDS
+    stub = (setup, load, NOP, store, NOP, clear, NOP, jump(CONTINUE_PC), NOP, NOP)
     relocated = {
         CLEAR_PC: jump(TRAMPOLINE_PC),
         CLEAR_PC + 4: NOP,
@@ -113,6 +119,8 @@ def make_probe(data, *, build_input=False):
         if not host_fixes["patches"]:
             raise ValueError("Expected the normal host RDPA fix")
     patched = bytearray(baseline)
+    for pc, word in relocated.items():
+        struct.pack_into("<I", patched, start + pc, word)
     sites = []
     for pc, address in PROBE_SITES:
         # The debug routine provides the direct 32-bit store encoding. R10
@@ -127,16 +135,6 @@ def make_probe(data, *, build_input=False):
             "candidate_register": WORKER_REGISTER,
             "candidate_private_b_word": f"0x{address:04x}",
         })
-    for pc, word in relocated.items():
-        struct.pack_into("<I", patched, start + pc, word)
-    sites.append({
-        "pico_b_pc": f"0x{TRAMPOLINE_PC + 16:04x}",
-        "file_offset": f"0x{start + TRAMPOLINE_PC + 16:x}",
-        "original_word": "0xfc000000",
-        "replacement_word": f"0x{marker:08x}",
-        "candidate_register": WORKER_REGISTER,
-        "candidate_private_b_word": "0xb408",
-    })
     patched = bytes(patched)
     if hashlib.sha256(patched[start:start + symbol.size]).hexdigest() != PROBE_IMAGE_HASH:
         raise ValueError("Unexpected instrumented Runner D image")
