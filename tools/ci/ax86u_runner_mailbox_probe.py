@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare a single-word Pico B mailbox diagnostic object for bench testing."""
+"""Mark worker assignment and retirement in the Pico B diagnostic image."""
 
 import argparse
 import hashlib
@@ -20,11 +20,12 @@ INPUTS = {
     "1dd85d4200747f5cbf5699ffef1339f13b91622105b44b9af16c3c83576f2bfc": "installed module backup",
 }
 IMAGE_HASH = "449e860e7cdfce5ab121e2624b0652fd20dd382299d49602126aa6791d228b7e"
-PROBE_IMAGE_HASH = "b313441fa3594388fc5a811bd90e7c007d9f8a2673c6b39e176b44eb1ca6bd76"
+PROBE_IMAGE_HASH = "05684eb526df43f8b27f1d1eca1899b13697cf734fe4c6aa84c272dd7fe525d5"
 NEARBY_WORDS = (0x211A4000, 0xA4A44A80, 0x067448E1, 0xFC000000, 0xBCB00FF4)
-PATCH_PC = 0x0CC0
+RETIREMENT_WORDS = (0x22BB2110, 0x8CB2E0A6, 0xFC000000, 0x2ABB2110, 0x2A0A8A40)
+PROBE_SITES = ((0x0CC0, 0xB400), (0x1048, 0xB404))
 SCRATCH = 0xB400
-AVAILABILITY_STORE_PC = 0x104C
+WORKER_REGISTER = 10
 
 
 def load_driver_patcher():
@@ -61,23 +62,22 @@ def make_probe(data, *, build_input=False):
         raise ValueError("Runner D microcode identity changed")
     if struct.unpack_from("<5I", runner, 0x0CB4) != NEARBY_WORDS:
         raise ValueError("Mailbox check and branch words changed")
-    store = struct.unpack_from("<I", runner, AVAILABILITY_STORE_PC)[0]
-    if store != 0x2ABB2110:
-        raise ValueError("Calibrated availability byte store changed")
+    if struct.unpack_from("<5I", runner, 0x1040) != RETIREMENT_WORDS:
+        raise ValueError("Worker retirement words changed")
+    word_store = struct.unpack_from("<I", runner, 0x00B4)[0]
+    if word_store != 0x2A8B1CC2:
+        raise ValueError("Debug routine's 32-bit store changed")
     for name in "ABCD":
         _, _, other = runner_image(elf, name)
         for (word,) in struct.iter_unpack("<I", other):
             if ((word & 0xFE000000) in (0x22000000, 0x2A000000)
                     and SCRATCH <= ((word >> 4) & 0xFFFF) < SCRATCH + 16):
                 raise ValueError(f"Direct memory reference conflicts with probe scratch in Runner {name}")
-    patch_at = symbol.value + PATCH_PC
-    if any(rel.section_index == symbol.section_index and patch_at - 7 <= rel.offset < patch_at + 4
-           for rel in elf.relocations):
-        raise ValueError("A relocation overlaps the probe instruction")
-
-    # Preserve the observed byte-store family and access mode. Substitute the
-    # register observed at the mailbox branch and the reviewed scratch address.
-    replacement = (store & 0xFE00000F) | (17 << 20) | (SCRATCH << 4)
+    for pc, _ in PROBE_SITES:
+        patch_at = symbol.value + pc
+        if any(rel.section_index == symbol.section_index and patch_at - 7 <= rel.offset < patch_at + 4
+               for rel in elf.relocations):
+            raise ValueError(f"A relocation overlaps the probe at {pc:#06x}")
     baseline = data
     if build_input and INPUTS[digest] == "vendor object":
         spec = json.loads((ROOT / "tools/ci/ax86u-rdpa-patches.json").read_text())
@@ -85,10 +85,20 @@ def make_probe(data, *, build_input=False):
         if not host_fixes["patches"]:
             raise ValueError("Expected the normal host RDPA fix")
     patched = bytearray(baseline)
-    offset = start + PATCH_PC
-    struct.pack_into("<I", patched, offset, replacement)
-    if patched[:offset] != baseline[:offset] or patched[offset + 4:] != baseline[offset + 4:]:
-        raise AssertionError("Probe changed bytes outside its instruction word")
+    sites = []
+    for pc, address in PROBE_SITES:
+        # The debug routine provides the direct 32-bit store encoding. R10
+        # contains the worker mask in bits 16–19 at the two instrumented sites.
+        replacement = (word_store & 0xFE00000F) | (WORKER_REGISTER << 20) | (address << 4)
+        struct.pack_into("<I", patched, start + pc, replacement)
+        sites.append({
+            "pico_b_pc": f"0x{pc:04x}",
+            "file_offset": f"0x{start + pc:x}",
+            "original_word": "0xfc000000",
+            "replacement_word": f"0x{replacement:08x}",
+            "candidate_register": WORKER_REGISTER,
+            "candidate_private_b_word": f"0x{address:04x}",
+        })
     patched = bytes(patched)
     if hashlib.sha256(patched[start:start + symbol.size]).hexdigest() != PROBE_IMAGE_HASH:
         raise ValueError("Unexpected instrumented Runner D image")
@@ -100,12 +110,7 @@ def make_probe(data, *, build_input=False):
         "runner_d_before": IMAGE_HASH,
         "runner_d_after": hashlib.sha256(patched[start:start + symbol.size]).hexdigest(),
         "section": ".data",
-        "pico_b_pc": f"0x{PATCH_PC:04x}",
-        "file_offset": f"0x{offset:x}",
-        "original_word": f"0x{NEARBY_WORDS[3]:08x}",
-        "replacement_word": f"0x{replacement:08x}",
-        "candidate_register": 17,
-        "candidate_private_b_byte": f"0x{SCRATCH:04x}",
+        "sites": sites,
     }
 
 

@@ -13,7 +13,7 @@ on:
         required: false
         type: string
       runner_mailbox_probe:
-        description: Build a diagnostic image with the Pico B mailbox probe
+        description: Build the Pico B worker assignment and retirement probe
         required: false
         default: false
         type: boolean
@@ -176,7 +176,7 @@ jobs:
         if: ${{ inputs.checks_only != true }}
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ inputs.runner_mailbox_probe && 'rt-ax86u-mailbox-probe' || 'rt-ax86u-firmware' }}
+          name: ${{ inputs.runner_mailbox_probe && 'rt-ax86u-worker-retirement-probe' || 'rt-ax86u-firmware' }}
           path: dist/rt-ax86u/*
           if-no-files-found: error
           compression-level: 0
