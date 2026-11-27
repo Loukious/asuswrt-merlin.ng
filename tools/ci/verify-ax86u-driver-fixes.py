@@ -3,6 +3,7 @@
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import struct
 import sys
@@ -97,6 +98,15 @@ def verify_dhd(patcher):
     return results
 
 
+def verify_probe_image(elf, path):
+    import ax86u_runner_mailbox_probe as probe
+    _, _, runner = probe.runner_image(elf, "D")
+    digest = hashlib.sha256(runner).hexdigest()
+    if digest != probe.PROBE_IMAGE_HASH:
+        raise SystemExit("Missing mailbox probe in " + str(path))
+    return digest
+
+
 def main():
     definition = importlib.util.spec_from_file_location(
         "ax86u_driver_patcher", CI / "patch-ax86u-drivers.py")
@@ -110,7 +120,13 @@ def main():
     )
     for filename, module_name, built in specifications:
         specification = json.loads((CI / filename).read_text())
-        _, expected = patcher.patch_blob((ROOT / specification["target"]).read_bytes(), specification)
+        original = (ROOT / specification["target"]).read_bytes()
+        _, expected = patcher.patch_blob(original, specification)
+        probe_enabled = module_name == "rdpa" and os.environ.get("AX86U_RUNNER_MAILBOX_PROBE") == "1"
+        if probe_enabled:
+            import ax86u_runner_mailbox_probe as probe
+            _, probe_report = probe.make_probe(original, build_input=True)
+            expected["patched_sha256"] = probe_report["output_sha256"]
         installed = list((SDK / "targets/962118GW/fs/lib/modules").rglob(module_name + ".ko"))
         if len(installed) != 1:
             raise SystemExit("Expected one packaged " + module_name + ".ko")
@@ -134,13 +150,16 @@ def main():
                 if instruction != int(modification["replacement"], 16):
                     raise SystemExit("Missing driver fix {} in {}".format(
                         modification["name"], path))
-            report["modules"].append({
+            entry = {
                 "path": str(path.relative_to(ROOT)),
                 "sha256": hashlib.sha256(data).hexdigest(),
                 "verified_instruction_count": len(specification["patches"]),
                 "vendor_input_sha256": expected["original_sha256"],
                 "patched_object_sha256": expected["patched_sha256"],
-            })
+            }
+            if probe_enabled:
+                entry["runner_d_sha256"] = verify_probe_image(elf, path)
+            report["modules"].append(entry)
     report["modules"].extend(verify_dhd(patcher))
     print(json.dumps(report, indent=2))
 

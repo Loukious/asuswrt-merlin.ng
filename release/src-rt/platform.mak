@@ -551,10 +551,19 @@ define platformKernelConfig
 				cp $(TOP_PLATFORM)/hnd_extra/prebuilt/bdmf.o $(HND_SRC)/rdp/projects/WL4908/target/bdmf/bdmf$(PRBM_EXT).o ; \
 				cp $(TOP_PLATFORM)/hnd_extra/prebuilt/rdpa.o $(HND_SRC)/rdp/projects/WL4908/target/rdpa/rdpa$(PRBM_EXT).o ; \
 				if [ "$(WFD_BUILD_FROM_SOURCE)" = "1" ]; then \
-					python3 $(HND_SRC)/../../tools/ci/patch-ax86u-drivers.py \
-						--spec $(HND_SRC)/../../tools/ci/ax86u-rdpa-patches.json \
-						--input $(TOP_PLATFORM)/hnd_extra/prebuilt/rdpa.o \
-						--output $(HND_SRC)/rdp/projects/WL4908/target/rdpa/rdpa$(PRBM_EXT).o || exit 1; \
+					if [ "$${AX86U_RUNNER_MAILBOX_PROBE:-0}" = "1" ]; then \
+						rdpa_object="$(HND_SRC)/rdp/projects/WL4908/target/rdpa/rdpa$(PRBM_EXT).o"; \
+						rm -f "$$rdpa_object.mailbox-probe"; \
+						python3 $(HND_SRC)/../../tools/ci/ax86u_runner_mailbox_probe.py \
+							--build-input --input $(TOP_PLATFORM)/hnd_extra/prebuilt/rdpa.o \
+							--output "$$rdpa_object.mailbox-probe" || exit 1; \
+						mv "$$rdpa_object.mailbox-probe" "$$rdpa_object" || exit 1; \
+					else \
+						python3 $(HND_SRC)/../../tools/ci/patch-ax86u-drivers.py \
+							--spec $(HND_SRC)/../../tools/ci/ax86u-rdpa-patches.json \
+							--input $(TOP_PLATFORM)/hnd_extra/prebuilt/rdpa.o \
+							--output $(HND_SRC)/rdp/projects/WL4908/target/rdpa/rdpa$(PRBM_EXT).o || exit 1; \
+					fi; \
 				fi; \
 				cp $(TOP_PLATFORM)/hnd_extra/prebuilt/rdpa_gpl.o $(HND_SRC)/rdp/projects/WL4908/target/rdpa_gpl/rdpa_gpl$(PRBM_EXT).o ; \
 				cp $(TOP_PLATFORM)/hnd_extra/prebuilt/rdpa_usr.o $(HND_SRC)/rdp/projects/WL4908/target/rdpa_user/rdpa_usr$(PRBM_EXT).o ; \
