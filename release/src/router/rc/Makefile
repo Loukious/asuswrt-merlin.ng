@@ -1270,6 +1270,7 @@ endif
 
 all: PB rc $(if $(RTCONFIG_BRCM_HOSTAPD), $(WPS_PBCD)) init.prep
 
+.PHONY: PB
 PB:
 	[ ! -d prebuild ] || cp prebuild/*.o ./
 ifeq ($(RTCONFIG_REALTEK),y)
@@ -1281,13 +1282,17 @@ ifneq ($(wildcard ./prebuild/rtk_wifi_drvmib.h),)
 endif
 endif
 
+# PB also writes some of these targets and stages the Realtek header.
+# Finish that copy before any individual object recipe or linker can use them.
+$(sort $(filter-out prebuild/%,$(OBJS) $(OBJS_WPS_PBCD)) init.prep): | PB
+
 ifeq ($(RTCONFIG_BRCM_HOSTAPD),y)
 WPS_PBCD_LDFLAGS := $(filter-out -L$(TOP)/libwebapi -lwebapi,$(LDFLAGS))
 $(WPS_PBCD): $(OBJS_WPS_PBCD)
 	@$(CC) -o $@ $(OBJS_WPS_PBCD) $(WPS_PBCD_LDFLAGS)
 endif
 
-rc: $(OBJS) $(if $(RTCONFIG_CONNDIAG),libconn_diag.so,)
+rc: $(OBJS) $(if $(RTCONFIG_CONNDIAG),libconn_diag.so,) | PB
 	@echo " [rc] CC $@"
 	@$(CC) -o $@ $^ $(LDFLAGS2) $(CFLAGS)
 
@@ -2519,7 +2524,7 @@ pswatch: pswatch.c
 	$(CPTMP)
 
 ifeq ($(RTCONFIG_CONNDIAG),y)
-libconn_diag.so:
+libconn_diag.so: | PB
 	@for f in $(patsubst %.o,%,$(DIAG_OBJS)) ; do \
 		if [ -f $${f}.c ] ; then \
 			$(CC) $(CFLAGS) -fPIC -c $${f}.c; \
