@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mark worker assignment, mailbox clear and retirement in the Pico B image."""
+"""Record Pico B worker checkpoints and both availability writers."""
 
 import argparse
 import hashlib
@@ -20,7 +20,7 @@ INPUTS = {
     "1dd85d4200747f5cbf5699ffef1339f13b91622105b44b9af16c3c83576f2bfc": "installed module backup",
 }
 IMAGE_HASH = "449e860e7cdfce5ab121e2624b0652fd20dd382299d49602126aa6791d228b7e"
-PROBE_IMAGE_HASH = "5b652d7df26d84451f1c85e6cb408424c6ac8e0be8506527dc8f9b74bf5ebee0"
+PROBE_IMAGE_HASH = "efe0c7f8ef3c40e41998c175a3c3b845b214d4199343191022d79593640ea88d"
 NEARBY_WORDS = (0x211A4000, 0xA4A44A80, 0x067448E1, 0xFC000000, 0xBCB00FF4)
 RETIREMENT_WORDS = (0x22BB2110, 0x8CB2E0A6, 0xFC000000, 0x2ABB2110, 0x2A0A8A40)
 WORKER_REGISTER = 10
@@ -29,12 +29,23 @@ CLEAR_PC = 0x0CC4
 CONTINUE_PC = 0x0CD4
 TRAMPOLINE_PC = 0x7F00
 CLEAR_WORDS = (0xBCB00FF4, 0x22B2879C, 0x2A0287B4, 0x280A4000)
+DISPATCH_PC = 0x0850
+DISPATCH_STUB = 0x7F40
+DISPATCH_WORDS = (0x28C48000, 0x2898C000, 0x8230E012)
+RETURN_PC = 0x1050
+RETURN_STUB = 0x7F80
+RETURN_WORDS = (0x2A0A8A40, 0x1800CB47, NOP, NOP)
 PROBE_SITES = (
-    (0x0CC0, 0xB400),                # accepted assignment
-    (TRAMPOLINE_PC + 8, 0xB40C),    # after the first load
-    (TRAMPOLINE_PC + 16, 0xB610),   # after the first store
-    (TRAMPOLINE_PC + 24, 0xB408),   # after the mailbox clear
-    (0x1048, 0xB404),                # before updating availability
+    (0x0CC0, 0xB400, WORKER_REGISTER),                # accepted assignment
+    (TRAMPOLINE_PC + 8, 0xB40C, WORKER_REGISTER),     # after the first load
+    (TRAMPOLINE_PC + 16, 0xB610, WORKER_REGISTER),    # after the first store
+    (TRAMPOLINE_PC + 24, 0xB408, WORKER_REGISTER),    # after the mailbox clear
+    (0x1048, 0xB404, WORKER_REGISTER),                # before updating availability
+    (DISPATCH_STUB + 8, 0xB614, 17),                  # dispatch mask originally loaded
+    (DISPATCH_STUB + 12, 0xB618, 11),                 # dispatch mask written
+    (DISPATCH_STUB + 16, 0xB61C, 9),                  # worker selected by dispatch
+    (RETURN_STUB + 4, 0xB620, 11),                    # retirement mask written
+    (RETURN_STUB + 8, 0xB624, WORKER_REGISTER),        # worker past the retirement write
 )
 
 
@@ -80,6 +91,12 @@ def make_probe(data, *, build_input=False):
         raise ValueError("Mailbox check and branch words changed")
     if struct.unpack_from("<5I", runner, 0x1040) != RETIREMENT_WORDS:
         raise ValueError("Worker retirement words changed")
+    if struct.unpack_from("<4I", runner, RETURN_PC) != RETURN_WORDS:
+        raise ValueError("Worker return words changed")
+    if struct.unpack_from("<6I", runner, DISPATCH_PC - 4) != (
+        0x2ABB2110, *DISPATCH_WORDS, 0x02002008, 0x8A30E04A
+    ) or struct.unpack_from("<I", runner, 0x0814)[0] != 0x231B2110:
+        raise ValueError("Dispatcher availability and publication words changed")
     word_store = struct.unpack_from("<I", runner, 0x00B4)[0]
     if word_store != 0x2A8B1CC2:
         raise ValueError("Debug routine's 32-bit store changed")
@@ -95,19 +112,25 @@ def make_probe(data, *, build_input=False):
         for (word,) in struct.iter_unpack("<I", other):
             address = (word >> 4) & 0xFFFF
             if ((word & 0xFE000000) in (0x22000000, 0x2A000000)
-                    and (0xB400 <= address < 0xB410 or 0xB610 <= address < 0xB61C)):
+                    and (0xB400 <= address < 0xB410 or 0xB610 <= address < 0xB62C)):
                 raise ValueError(f"Direct memory reference conflicts with probe scratch in Runner {name}")
     # Move only the four straight-line instructions. Keep the conditional at
     # CONTINUE_PC in place and place NOPs in both delay slots of each jump.
     setup, load, store, clear = CLEAR_WORDS
-    stub = (setup, load, NOP, store, NOP, clear, NOP, jump(CONTINUE_PC), NOP, NOP)
-    relocated = {
-        CLEAR_PC: jump(TRAMPOLINE_PC),
-        CLEAR_PC + 4: NOP,
-        CLEAR_PC + 8: NOP,
-        **{TRAMPOLINE_PC + i * 4: word for i, word in enumerate(stub)},
-    }
-    for pc in [pc for pc, _ in PROBE_SITES] + list(relocated):
+    clear_stub = (setup, load, NOP, store, NOP, clear, NOP, jump(CONTINUE_PC), NOP, NOP)
+    mailbox_store, reorder_store, next_value = DISPATCH_WORDS
+    dispatch_stub = (mailbox_store, reorder_store, NOP, NOP, NOP, next_value,
+                     jump(DISPATCH_PC + 12), NOP, NOP)
+    dummy_store, return_to_worker, nop1, nop2 = RETURN_WORDS
+    return_stub = (dummy_store, NOP, NOP, return_to_worker, nop1, nop2,
+                   jump(RETURN_PC + 16), NOP, NOP)
+    relocated = {}
+    for entry, target, stub in ((CLEAR_PC, TRAMPOLINE_PC, clear_stub),
+                                (DISPATCH_PC, DISPATCH_STUB, dispatch_stub),
+                                (RETURN_PC, RETURN_STUB, return_stub)):
+        relocated.update({entry: jump(target), entry + 4: NOP, entry + 8: NOP})
+        relocated.update({target + i * 4: word for i, word in enumerate(stub)})
+    for pc in [pc for pc, _, _ in PROBE_SITES] + list(relocated):
         patch_at = symbol.value + pc
         if any(rel.section_index == symbol.section_index and patch_at - 7 <= rel.offset < patch_at + 4
                for rel in elf.relocations):
@@ -122,34 +145,36 @@ def make_probe(data, *, build_input=False):
     for pc, word in relocated.items():
         struct.pack_into("<I", patched, start + pc, word)
     sites = []
-    for pc, address in PROBE_SITES:
-        # The debug routine provides the direct 32-bit store encoding. R10
-        # contains the worker mask in bits 16–19 at the two instrumented sites.
-        replacement = (word_store & 0xFE00000F) | (WORKER_REGISTER << 20) | (address << 4)
+    for pc, address, register in PROBE_SITES:
+        # The debug routine provides the direct 32-bit store encoding.
+        replacement = (word_store & 0xFE00000F) | (register << 20) | (address << 4)
         struct.pack_into("<I", patched, start + pc, replacement)
         sites.append({
             "pico_b_pc": f"0x{pc:04x}",
             "file_offset": f"0x{start + pc:x}",
             "original_word": "0xfc000000",
             "replacement_word": f"0x{replacement:08x}",
-            "candidate_register": WORKER_REGISTER,
+            "candidate_register": register,
             "candidate_private_b_word": f"0x{address:04x}",
         })
     patched = bytes(patched)
-    if hashlib.sha256(patched[start:start + symbol.size]).hexdigest() != PROBE_IMAGE_HASH:
-        raise ValueError("Unexpected instrumented Runner D image")
+    patched_hash = hashlib.sha256(patched[start:start + symbol.size]).hexdigest()
+    if patched_hash != PROBE_IMAGE_HASH:
+        raise ValueError(f"Unexpected instrumented Runner D image: {patched_hash}")
     return patched, {
         "input": INPUTS[digest],
         "input_sha256": digest,
         "baseline_sha256": hashlib.sha256(baseline).hexdigest(),
         "output_sha256": hashlib.sha256(patched).hexdigest(),
         "runner_d_before": IMAGE_HASH,
-        "runner_d_after": hashlib.sha256(patched[start:start + symbol.size]).hexdigest(),
+        "runner_d_after": patched_hash,
         "section": ".data",
         "sites": sites,
         "mailbox_clear_entry": f"0x{CLEAR_PC:04x}",
         "mailbox_clear_original_continuation": f"0x{CONTINUE_PC:04x}",
         "mailbox_clear_trampoline": f"0x{TRAMPOLINE_PC:04x}",
+        "dispatch_trampoline": f"0x{DISPATCH_STUB:04x}",
+        "worker_return_trampoline": f"0x{RETURN_STUB:04x}",
     }
 
 
