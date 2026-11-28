@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Record Pico B worker checkpoints and both availability writers."""
+"""Record Pico B worker checkpoints, availability writers and post-clear paths."""
 
 import argparse
 import hashlib
@@ -20,7 +20,7 @@ INPUTS = {
     "1dd85d4200747f5cbf5699ffef1339f13b91622105b44b9af16c3c83576f2bfc": "installed module backup",
 }
 IMAGE_HASH = "449e860e7cdfce5ab121e2624b0652fd20dd382299d49602126aa6791d228b7e"
-PROBE_IMAGE_HASH = "efe0c7f8ef3c40e41998c175a3c3b845b214d4199343191022d79593640ea88d"
+PROBE_IMAGE_HASH = "c74841af372e541ca4f57cc92c70967f0f3247a6580c8617e47d22779a64e944"
 NEARBY_WORDS = (0x211A4000, 0xA4A44A80, 0x067448E1, 0xFC000000, 0xBCB00FF4)
 RETIREMENT_WORDS = (0x22BB2110, 0x8CB2E0A6, 0xFC000000, 0x2ABB2110, 0x2A0A8A40)
 WORKER_REGISTER = 10
@@ -35,6 +35,12 @@ DISPATCH_WORDS = (0x28C48000, 0x2898C000, 0x8230E012)
 RETURN_PC = 0x1050
 RETURN_STUB = 0x7F80
 RETURN_WORDS = (0x2A0A8A40, 0x1800CB47, NOP, NOP)
+TAKEN_PC = 0x0A0C
+TAKEN_STUB = 0x7FA4
+TAKEN_WORDS = (0x23628446, 0xA1339800, 0x22C2855C)
+FALLTHROUGH_PC = 0x0CE8
+FALLTHROUGH_STUB = 0x7FC8
+FALLTHROUGH_WORDS = (0xA4B2E100, 0x86E2E020, 0xBCC92E04)
 PROBE_SITES = (
     (0x0CC0, 0xB400, WORKER_REGISTER),                # accepted assignment
     (TRAMPOLINE_PC + 8, 0xB40C, WORKER_REGISTER),     # after the first load
@@ -46,6 +52,9 @@ PROBE_SITES = (
     (DISPATCH_STUB + 16, 0xB61C, 9),                  # worker selected by dispatch
     (RETURN_STUB + 4, 0xB620, 11),                    # retirement mask written
     (RETURN_STUB + 8, 0xB624, WORKER_REGISTER),        # worker past the retirement write
+    (TRAMPOLINE_PC + 28, 0xB628, 11),                # R11 just before the post-clear conditional
+    (TAKEN_STUB, 0xB62C, WORKER_REGISTER),            # progress at 0x0a0c
+    (FALLTHROUGH_STUB, 0xB630, WORKER_REGISTER),      # progress at 0x0ce8
 )
 
 
@@ -103,6 +112,12 @@ def make_probe(data, *, build_input=False):
     if (struct.unpack_from("<4I", runner, CLEAR_PC) != CLEAR_WORDS
             or struct.unpack_from("<I", runner, CONTINUE_PC)[0] != 0x0A32E74D):
         raise ValueError("Mailbox clear and continuation instructions changed")
+    if struct.unpack_from("<5I", runner, TAKEN_PC - 4) != (0x22E28407, *TAKEN_WORDS, 0x077591C4):
+        raise ValueError("Post-clear branch target words changed")
+    if struct.unpack_from("<5I", runner, FALLTHROUGH_PC - 4) != (
+        0xC6000642, *FALLTHROUGH_WORDS, 0x22B28446
+    ):
+        raise ValueError("Post-clear fall-through words changed")
     if struct.unpack_from("<3I", runner, 8) != (0x1000001B, NOP, NOP):
         raise ValueError("Known absolute jump instruction changed")
     if any(word != NOP for (word,) in struct.iter_unpack("<I", runner[TRAMPOLINE_PC:])):
@@ -112,22 +127,26 @@ def make_probe(data, *, build_input=False):
         for (word,) in struct.iter_unpack("<I", other):
             address = (word >> 4) & 0xFFFF
             if ((word & 0xFE000000) in (0x22000000, 0x2A000000)
-                    and (0xB400 <= address < 0xB410 or 0xB610 <= address < 0xB62C)):
+                    and (0xB400 <= address < 0xB410 or 0xB610 <= address < 0xB63C)):
                 raise ValueError(f"Direct memory reference conflicts with probe scratch in Runner {name}")
     # Move only the four straight-line instructions. Keep the conditional at
     # CONTINUE_PC in place and place NOPs in both delay slots of each jump.
     setup, load, store, clear = CLEAR_WORDS
-    clear_stub = (setup, load, NOP, store, NOP, clear, NOP, jump(CONTINUE_PC), NOP, NOP)
+    clear_stub = (setup, load, NOP, store, NOP, clear, NOP, NOP, jump(CONTINUE_PC), NOP, NOP)
     mailbox_store, reorder_store, next_value = DISPATCH_WORDS
     dispatch_stub = (mailbox_store, reorder_store, NOP, NOP, NOP, next_value,
                      jump(DISPATCH_PC + 12), NOP, NOP)
     dummy_store, return_to_worker, nop1, nop2 = RETURN_WORDS
     return_stub = (dummy_store, NOP, NOP, return_to_worker, nop1, nop2,
                    jump(RETURN_PC + 16), NOP, NOP)
+    taken_stub = (NOP, *TAKEN_WORDS, jump(TAKEN_PC + 12), NOP, NOP)
+    fallthrough_stub = (NOP, *FALLTHROUGH_WORDS, jump(FALLTHROUGH_PC + 12), NOP, NOP)
     relocated = {}
     for entry, target, stub in ((CLEAR_PC, TRAMPOLINE_PC, clear_stub),
                                 (DISPATCH_PC, DISPATCH_STUB, dispatch_stub),
-                                (RETURN_PC, RETURN_STUB, return_stub)):
+                                (RETURN_PC, RETURN_STUB, return_stub),
+                                (TAKEN_PC, TAKEN_STUB, taken_stub),
+                                (FALLTHROUGH_PC, FALLTHROUGH_STUB, fallthrough_stub)):
         relocated.update({entry: jump(target), entry + 4: NOP, entry + 8: NOP})
         relocated.update({target + i * 4: word for i, word in enumerate(stub)})
     for pc in [pc for pc, _, _ in PROBE_SITES] + list(relocated):
