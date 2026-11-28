@@ -20,7 +20,7 @@ INPUTS = {
     "1dd85d4200747f5cbf5699ffef1339f13b91622105b44b9af16c3c83576f2bfc": "installed module backup",
 }
 IMAGE_HASH = "449e860e7cdfce5ab121e2624b0652fd20dd382299d49602126aa6791d228b7e"
-PROBE_IMAGE_HASH = "a0f31e1a6a175981d959aa53fa601b6b6d3a4b235f2b98337011b822094c587e"
+PROBE_IMAGE_HASH = "37f781e82e3591edd99a3280a0f73ba73c6346e581d5ecdc24bd21e5b70c02c7"
 NEARBY_WORDS = (0x211A4000, 0xA4A44A80, 0x067448E1, 0xFC000000, 0xBCB00FF4)
 RETIREMENT_WORDS = (0x22BB2110, 0x8CB2E0A6, 0xFC000000, 0x2ABB2110, 0x2A0A8A40)
 WORKER_REGISTER = 10
@@ -92,6 +92,8 @@ PROBE_SITES = (
     (ALT_HEAD_STUB + 12, 0xB674, WORKER_REGISTER),     # identify alternate owner reader
     (ALT_HEAD_STUB + 32, 0xB678, WORKER_REGISTER),     # alternate compare continues
     (ALT_HEAD_STUB + 48, 0xB67C, WORKER_REGISTER),     # alternate compare retries
+    (0x1120, 0xB688, WORKER_REGISTER),                # first slot following the indirect return
+    (0x1124, 0xB68C, WORKER_REGISTER),                # second slot following the indirect return
 )
 
 
@@ -175,7 +177,8 @@ def make_probe(data, *, build_input=False):
         raise ValueError("Reorder retry words changed")
     for pc, words in ((REGULAR_ENTRY, REGULAR_WORDS), (TYPE_ENTRY, TYPE_WORDS),
                       (LOCAL_ENTRY, LOCAL_WORDS), (ALT_HEAD_ENTRY, ALT_HEAD_WORDS),
-                      (0x1180, (0xBCC00024, 0xC2031702, 0x1800F487))):
+                      (0x1180, (0xBCC00024, 0xC2031702, 0x1800F487)),
+                      (0x111C, (0x00002015, NOP, NOP, 0xBCD00294))):
         if struct.unpack_from(f"<{len(words)}I", runner, pc) != words:
             raise ValueError(f"Regular continuation word changed at {pc:#06x}")
     if struct.unpack_from("<3I", runner, 8) != (0x1000001B, NOP, NOP):
@@ -187,7 +190,7 @@ def make_probe(data, *, build_input=False):
         for (word,) in struct.iter_unpack("<I", other):
             address = (word >> 4) & 0xFFFF
             if ((word & 0xFE000000) in (0x22000000, 0x2A000000)
-                    and (0xB400 <= address < 0xB410 or 0xB610 <= address < 0xB688)):
+                    and (0xB400 <= address < 0xB410 or 0xB610 <= address < 0xB698)):
                 raise ValueError(f"Direct memory reference conflicts with probe scratch in Runner {name}")
     # Move only the four straight-line instructions. Keep the conditional at
     # CONTINUE_PC in place and place NOPs in both delay slots of each jump.
