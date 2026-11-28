@@ -20,7 +20,7 @@ INPUTS = {
     "1dd85d4200747f5cbf5699ffef1339f13b91622105b44b9af16c3c83576f2bfc": "installed module backup",
 }
 IMAGE_HASH = "449e860e7cdfce5ab121e2624b0652fd20dd382299d49602126aa6791d228b7e"
-PROBE_IMAGE_HASH = "155cf780debce194c20e1d24c45cf0ae52d5c6f60a32f44bdfc1b8859ab7ae7e"
+PROBE_IMAGE_HASH = "a0f31e1a6a175981d959aa53fa601b6b6d3a4b235f2b98337011b822094c587e"
 NEARBY_WORDS = (0x211A4000, 0xA4A44A80, 0x067448E1, 0xFC000000, 0xBCB00FF4)
 RETIREMENT_WORDS = (0x22BB2110, 0x8CB2E0A6, 0xFC000000, 0x2ABB2110, 0x2A0A8A40)
 WORKER_REGISTER = 10
@@ -47,6 +47,18 @@ REORDER_ROUTE_WORDS = (0x077591C4, 0x80B02000, 0x2AC28024)
 REORDER_HEAD_PC = 0x112C
 REORDER_HEAD_STUB = 0x7E80
 REORDER_HEAD_WORDS = (0x20C0C000, 0x840320A6, 0x02004818, 0x8230E010, 0x22E28407)
+REGULAR_ENTRY = 0x0A24
+REGULAR_STUB = 0x7D40
+REGULAR_WORDS = (0x86032110, 0x02005413, 0xBCD00074, 0x86032060)
+TYPE_ENTRY = 0x0A34
+TYPE_STUB = 0x7D80
+TYPE_WORDS = (0x020055A5, 0xBD50A684, 0x86032290)
+LOCAL_ENTRY = 0x0A74
+LOCAL_STUB = 0x7DC0
+LOCAL_WORDS = (0xBD2B0F04, 0x22B287FC, 0xA0C2C800)
+ALT_HEAD_ENTRY = 0x0F48
+ALT_HEAD_STUB = 0x7E00
+ALT_HEAD_WORDS = (0x20C0C000, 0x840320A6, 0x0200488C, 0x8230E010, 0x8A30E048)
 PROBE_SITES = (
     (0x0CC0, 0xB400, WORKER_REGISTER),                # accepted assignment
     (TRAMPOLINE_PC + 8, 0xB40C, WORKER_REGISTER),     # after the first load
@@ -69,6 +81,17 @@ PROBE_SITES = (
     (REORDER_HEAD_STUB + 12, 0xB648, WORKER_REGISTER),  # tag the reorder read
     (REORDER_HEAD_STUB + 32, 0xB64C, WORKER_REGISTER),  # compare continued to 0x1140
     (REORDER_HEAD_STUB + 48, 0xB650, WORKER_REGISTER),  # compare branched to 0x1194
+    (REGULAR_STUB, 0xB654, WORKER_REGISTER),           # entry at 0x0a24
+    (REGULAR_STUB + 20, 0xB658, WORKER_REGISTER),      # first test continues to 0x0a34
+    (REGULAR_STUB + 36, 0xB65C, WORKER_REGISTER),      # first test selects 0x0a74
+    (TYPE_STUB + 12, 0xB660, WORKER_REGISTER),         # second test continues to 0x0a40
+    (TYPE_STUB + 28, 0xB664, WORKER_REGISTER),         # second test selects 0x10c8
+    (LOCAL_STUB, 0xB668, WORKER_REGISTER),             # arrival at 0x0a74 from any branch
+    (ALT_HEAD_STUB + 4, 0xB66C, 3),                   # alternate owner cursor
+    (ALT_HEAD_STUB + 8, 0xB670, 12),                  # alternate owner value
+    (ALT_HEAD_STUB + 12, 0xB674, WORKER_REGISTER),     # identify alternate owner reader
+    (ALT_HEAD_STUB + 32, 0xB678, WORKER_REGISTER),     # alternate compare continues
+    (ALT_HEAD_STUB + 48, 0xB67C, WORKER_REGISTER),     # alternate compare retries
 )
 
 
@@ -150,16 +173,21 @@ def make_probe(data, *, build_input=False):
         raise ValueError("Reorder owner check or adjacent words changed")
     if struct.unpack_from("<3I", runner, 0x1194) != (0xBCC00024, 0xC2031702, 0x180112C7):
         raise ValueError("Reorder retry words changed")
+    for pc, words in ((REGULAR_ENTRY, REGULAR_WORDS), (TYPE_ENTRY, TYPE_WORDS),
+                      (LOCAL_ENTRY, LOCAL_WORDS), (ALT_HEAD_ENTRY, ALT_HEAD_WORDS),
+                      (0x1180, (0xBCC00024, 0xC2031702, 0x1800F487))):
+        if struct.unpack_from(f"<{len(words)}I", runner, pc) != words:
+            raise ValueError(f"Regular continuation word changed at {pc:#06x}")
     if struct.unpack_from("<3I", runner, 8) != (0x1000001B, NOP, NOP):
         raise ValueError("Known absolute jump instruction changed")
-    if any(word != NOP for (word,) in struct.iter_unpack("<I", runner[REORDER_ROUTE_STUB:])):
+    if any(word != NOP for (word,) in struct.iter_unpack("<I", runner[REGULAR_STUB:])):
         raise ValueError("The trampoline no longer falls inside NOP padding")
     for name in "ABCD":
         _, _, other = runner_image(elf, name)
         for (word,) in struct.iter_unpack("<I", other):
             address = (word >> 4) & 0xFFFF
             if ((word & 0xFE000000) in (0x22000000, 0x2A000000)
-                    and (0xB400 <= address < 0xB410 or 0xB610 <= address < 0xB65C)):
+                    and (0xB400 <= address < 0xB410 or 0xB610 <= address < 0xB688)):
                 raise ValueError(f"Direct memory reference conflicts with probe scratch in Runner {name}")
     # Move only the four straight-line instructions. Keep the conditional at
     # CONTINUE_PC in place and place NOPs in both delay slots of each jump.
@@ -182,6 +210,19 @@ def make_probe(data, *, build_input=False):
     retry = redirect_relative(retry, 0x1134, 0x1194, REORDER_HEAD_STUB + 20, REORDER_HEAD_STUB + 48)
     reorder_head_stub = (load_owner, NOP, NOP, NOP, compare_owner, retry, retry_delay_1, retry_delay_2,
                          NOP, jump(0x1140), NOP, NOP, NOP, jump(0x1194), NOP, NOP)
+    compare, branch, delay_1, delay_2 = REGULAR_WORDS
+    branch = redirect_relative(branch, 0x0A28, LOCAL_ENTRY, REGULAR_STUB + 8, REGULAR_STUB + 36)
+    regular_stub = (NOP, compare, branch, delay_1, delay_2,
+                    NOP, jump(TYPE_ENTRY), NOP, NOP, NOP, jump(LOCAL_ENTRY), NOP, NOP)
+    branch, delay_1, delay_2 = TYPE_WORDS
+    branch = redirect_relative(branch, TYPE_ENTRY, 0x10C8, TYPE_STUB, TYPE_STUB + 28)
+    type_stub = (branch, delay_1, delay_2,
+                 NOP, jump(0x0A40), NOP, NOP, NOP, jump(0x10C8), NOP, NOP)
+    local_stub = (NOP, *LOCAL_WORDS, jump(0x0A80), NOP, NOP)
+    load_owner, compare_owner, retry, delay_1, delay_2 = ALT_HEAD_WORDS
+    retry = redirect_relative(retry, 0x0F50, 0x1180, ALT_HEAD_STUB + 20, ALT_HEAD_STUB + 48)
+    alt_head_stub = (load_owner, NOP, NOP, NOP, compare_owner, retry, delay_1, delay_2,
+                     NOP, jump(0x0F5C), NOP, NOP, NOP, jump(0x1180), NOP, NOP)
     relocated = {}
     for entry, target, stub in ((CLEAR_PC, TRAMPOLINE_PC, clear_stub),
                                 (DISPATCH_PC, DISPATCH_STUB, dispatch_stub),
@@ -189,9 +230,14 @@ def make_probe(data, *, build_input=False):
                                 (TAKEN_PC, TAKEN_STUB, taken_stub),
                                 (FALLTHROUGH_PC, FALLTHROUGH_STUB, fallthrough_stub),
                                 (REORDER_ROUTE_PC, REORDER_ROUTE_STUB, reorder_route_stub),
-                                (REORDER_HEAD_PC, REORDER_HEAD_STUB, reorder_head_stub)):
+                                (REORDER_HEAD_PC, REORDER_HEAD_STUB, reorder_head_stub),
+                                (REGULAR_ENTRY, REGULAR_STUB, regular_stub),
+                                (TYPE_ENTRY, TYPE_STUB, type_stub),
+                                (LOCAL_ENTRY, LOCAL_STUB, local_stub),
+                                (ALT_HEAD_ENTRY, ALT_HEAD_STUB, alt_head_stub)):
         relocated.update({entry: jump(target), entry + 4: NOP, entry + 8: NOP})
         relocated.update({target + i * 4: word for i, word in enumerate(stub)})
+    relocated[REGULAR_ENTRY + 12] = NOP
     for pc in [pc for pc, _, _ in PROBE_SITES] + list(relocated):
         patch_at = symbol.value + pc
         if any(rel.section_index == symbol.section_index and patch_at - 7 <= rel.offset < patch_at + 4
